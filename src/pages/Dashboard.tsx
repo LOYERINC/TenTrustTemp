@@ -1,11 +1,12 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { ShieldCheck, LayoutDashboard, Building, Users, Wallet, Bell, Search, Plus, MapPin, MoreVertical, CheckCircle2, Clock, TrendingUp, UploadCloud, FileText, Camera, Link as LinkIcon, Copy, Share2, Award, UserCheck, LogOut } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, Building, Users, Wallet, Bell, Search, Plus, MapPin, MoreVertical, CheckCircle2, Clock, TrendingUp, UploadCloud, FileText, Camera, Link as LinkIcon, Copy, Share2, Award, UserCheck, LogOut, User, Settings, HelpCircle, MessageSquare, Sparkles } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { mockApplications, mockFinancials } from '../data';
 import { useAuth } from '../context/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, addDoc, onSnapshot, query, where } from 'firebase/firestore';
+import OnboardingModal from '../components/OnboardingModal';
 
 const packages = [
   { id: 'basic', name: 'Basic', price: 3000, description: 'BVN + ID Check' },
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [estimationResult, setEstimationResult] = useState<any>(null);
   const [isEstimating, setIsEstimating] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   
   // Verify Tenant state
   const [verificationMode, setVerificationMode] = useState<'direct' | 'link'>('direct');
@@ -36,6 +38,21 @@ export default function Dashboard() {
 
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check URL query parameters for active tab
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'verify' || tabParam === 'verify-tenant') {
+      setActiveTab('verify-tenant');
+    }
+
+    // First time onboarding check
+    const hasCompletedTour = localStorage.getItem('tentrust_onboarding_completed');
+    if (!hasCompletedTour) {
+      setIsOnboardingOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -241,10 +258,19 @@ export default function Dashboard() {
               {item.label}
             </button>
           ))}
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              onClick={() => setIsOnboardingOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-xs text-brand-700 bg-brand-50/70 hover:bg-brand-100/70 border border-brand-200/60 transition-all shadow-xs"
+            >
+              <Sparkles className="w-4 h-4 text-brand-600" />
+              <span>Platform Quick Tour</span>
+            </button>
+          </div>
         </div>
         <div className="p-4 border-t border-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)] space-y-3">
           <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white font-bold">
+            <div className="w-10 h-10 rounded-full bg-[#0c2340] flex items-center justify-center text-white font-bold">
               {user ? user.firstName[0] : 'L'}
             </div>
             <div>
@@ -270,14 +296,30 @@ export default function Dashboard() {
           </h1>
           <div className="flex items-center gap-4">
             <Link to="/listings" className="text-sm font-medium text-brand-600 hover:text-brand-700 underline hidden sm:block mr-2">View Public Listings</Link>
-            <button onClick={() => setActiveTab('verify-tenant')} className="bg-brand-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-brand-700 transition-all flex items-center gap-2 shadow-sm">
-              <ShieldCheck className="w-5 h-5" /> Verify Tenant Now
+            <button onClick={() => setActiveTab('verify-tenant')} className="bg-brand-600 text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold hover:bg-brand-700 transition-all flex items-center gap-1.5 sm:gap-2 shadow-sm whitespace-nowrap">
+              <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" /> Verify Tenant Now
+            </button>
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`flex items-center gap-2 p-1.5 sm:px-3 sm:py-2 rounded-xl transition-all border ${
+                activeTab === 'profile'
+                  ? 'border-brand-600 bg-brand-50 text-brand-700'
+                  : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700'
+              }`}
+              title="View Profile"
+            >
+              <div className="w-8 h-8 rounded-lg bg-[#0c2340] flex items-center justify-center text-white font-bold text-xs shadow-xs">
+                {user ? `${user.firstName[0]}${user.lastName ? user.lastName[0] : ''}` : 'U'}
+              </div>
+              <span className="text-xs sm:text-sm font-semibold hidden md:inline">
+                {user ? user.firstName : 'Profile'}
+              </span>
             </button>
           </div>
         </header>
 
         {/* Scrollable Area */}
-        <div className="flex-1 overflow-auto p-4 lg:p-8 bg-slate-50">
+        <div className="flex-1 overflow-auto p-4 lg:p-8 pb-24 lg:pb-8 bg-slate-50">
           <div className="max-w-5xl mx-auto space-y-8">
             
             {/* HOW TO VERIFY TAB */}
@@ -335,6 +377,26 @@ export default function Dashboard() {
             {/* VERIFY TENANT TAB */}
             {activeTab === 'verify-tenant' && (
               <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden p-6 md:p-10">
+                
+                {/* TenTrust WhatsApp Concierge Banner */}
+                <div className="mb-8 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-700 text-white rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="space-y-1 text-center sm:text-left">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/20 text-white text-xs font-bold uppercase">
+                      💬 TenTrust Landlord Concierge
+                    </div>
+                    <h3 className="text-lg font-heading font-bold">Need us to handle the tenant check for you?</h3>
+                    <p className="text-emerald-100 text-xs sm:text-sm">Chat directly with our verification team on WhatsApp and we will assist you step-by-step.</p>
+                  </div>
+                  <a
+                    href="https://api.whatsapp.com/send?phone=2349058283054&text=Hello%20TenTrust%20Support,%20I%20am%20a%20landlord%20and%20I%20need%20help%20verifying%20a%20tenant."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white hover:bg-emerald-50 text-emerald-800 px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all shrink-0 flex items-center gap-2 active:scale-95"
+                  >
+                    Chat on WhatsApp
+                  </a>
+                </div>
+
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pb-6 border-b border-slate-100">
                   <div>
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 text-brand-700 text-xs font-bold uppercase mb-2">
@@ -669,7 +731,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {activeTab !== 'add-property' && activeTab !== 'verify-tenant' && activeTab !== 'reminders' && activeTab !== 'estimator' && (
+            {(activeTab === 'overview' || activeTab === 'properties' || activeTab === 'applications') && (
               <>
                 {/* Friendly Alert */}
                 <div className="bg-brand-900/5 border border-brand-200 rounded-2xl p-6 flex items-start gap-4">
@@ -855,7 +917,7 @@ export default function Dashboard() {
                                 <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
                                   property.status === 'Occupied' 
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                    : 'bg-blue-50 text-brand-700 border border-blue-100'
                                 }`}>
                                   {property.status}
                                 </span>
@@ -876,8 +938,8 @@ export default function Dashboard() {
             {activeTab === 'reminders' && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 md:p-8">
                  <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100">
-                    <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
-                       <Bell className="w-6 h-6 text-indigo-600" />
+                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+                       <Bell className="w-6 h-6 text-brand-600" />
                     </div>
                     <div>
                        <h2 className="text-2xl font-bold font-heading text-slate-900">Automated Rent Reminders</h2>
@@ -1010,9 +1072,182 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* PROFILE TAB */}
+            {activeTab === 'profile' && (
+              <div className="space-y-6">
+                {/* Clean Profile Header Card */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                    <div className="flex items-center gap-5">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#0c2340] text-white flex items-center justify-center text-2xl font-bold font-heading shadow-md shrink-0">
+                        {user ? `${user.firstName[0]}${user.lastName ? user.lastName[0] : ''}` : 'LU'}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2.5">
+                          <h2 className="text-xl sm:text-2xl font-heading font-black text-slate-900">
+                            {user ? `${user.firstName} ${user.lastName}` : 'Landlord User'}
+                          </h2>
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-500 font-normal">
+                          {user?.email || 'landlord@tentrust.ng'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={async () => { await logout(); navigate('/auth'); }}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 hover:border-red-200 text-slate-600 hover:text-red-600 hover:bg-red-50 text-xs font-bold transition-all self-start sm:self-center"
+                    >
+                      <LogOut className="w-4 h-4" /> Log Out
+                    </button>
+                  </div>
+                </div>
+
+                {/* Account Overview Stats */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-1.5 shadow-xs">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Account Role</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-900">Landlord</p>
+                    <p className="text-xs text-slate-500">Institutional Access</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-1.5 shadow-xs">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Properties</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-900">{properties.length} Listed</p>
+                    <p className="text-xs text-slate-500">In Portfolio</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-1.5 shadow-xs">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Screenings</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-900">{applications.length} Completed</p>
+                    <p className="text-xs text-slate-500">Tenant checks</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-1.5 shadow-xs">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Security</p>
+                    <p className="text-base sm:text-lg font-bold text-emerald-600">NDPR Active</p>
+                    <p className="text-xs text-slate-500">Encrypted KYC</p>
+                  </div>
+                </div>
+
+                {/* Quick Actions & Navigation */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
+                  <div className="px-5 py-4 border-b border-slate-100">
+                    <h3 className="font-heading font-bold text-slate-900 text-sm sm:text-base">Quick Actions</h3>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    <button
+                      onClick={() => setActiveTab('verify-tenant')}
+                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-700 shrink-0 group-hover:scale-105 transition-transform"><ShieldCheck className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900">Run a Verification</p>
+                        <p className="text-xs text-slate-500">Screen a prospective tenant in 3 minutes</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('add-property')}
+                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-700 shrink-0 group-hover:scale-105 transition-transform"><Plus className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900">List a Property</p>
+                        <p className="text-xs text-slate-500">Add a new property to your portfolio</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('estimator')}
+                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 shrink-0 group-hover:scale-105 transition-transform"><TrendingUp className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900">AI Rent Estimator</p>
+                        <p className="text-xs text-slate-500">Get a market-calibrated rent estimate</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Support & Guides */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
+                  <div className="px-5 py-4 border-b border-slate-100">
+                    <h3 className="font-heading font-bold text-slate-900 text-sm sm:text-base">Support &amp; Resources</h3>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    <a
+                      href="https://api.whatsapp.com/send?phone=2349058283054&text=Hello%20TenTrust%20Support,%20I%20need%20help%20with%20my%20account."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-700 shrink-0 group-hover:scale-105 transition-transform"><MessageSquare className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900">Chat on WhatsApp (09058283054)</p>
+                        <p className="text-xs text-slate-500">Talk directly with TenTrust landlord support</p>
+                      </div>
+                    </a>
+                    <button
+                      onClick={() => setIsOnboardingOpen(true)}
+                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-brand-700 shrink-0 group-hover:scale-105 transition-transform"><Sparkles className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900">Take Platform Tour</p>
+                        <p className="text-xs text-slate-500">Revisit the quick 3-step walkthrough</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('how-to-verify')}
+                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left group"
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 shrink-0 group-hover:scale-105 transition-transform"><HelpCircle className="w-5 h-5" /></div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900">How Tenant Verification Works</p>
+                        <p className="text-xs text-slate-500">Step-by-step landlord verification guide</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
+
+        {/* ─── MOBILE BOTTOM NAV BAR (visible below lg) ─── */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 z-50 safe-area-pb">
+          <div className="grid grid-cols-5 h-16">
+            {[
+              { id: 'overview', label: 'Home', icon: LayoutDashboard },
+              { id: 'properties', label: 'Properties', icon: Building },
+              { id: 'verify-tenant', label: 'Verify', icon: ShieldCheck },
+              { id: 'applications', label: 'Tenants', icon: Users },
+              { id: 'profile', label: 'Profile', icon: User },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                  activeTab === item.id
+                    ? 'text-brand-600'
+                    : 'text-slate-400 active:text-slate-600'
+                }`}
+              >
+                <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'text-brand-600' : ''}`} />
+                <span className={`text-[10px] font-semibold ${activeTab === item.id ? 'text-brand-600' : 'text-slate-400'}`}>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
       </main>
+
+      {/* Interactive Onboarding Tour Modal */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageSquare, Plus, Globe, ShieldCheck, Send, Trash2, Mic } from 'lucide-react';
+import { MessageSquare, Plus, Globe, ShieldCheck, Send, Trash2, Mic, ArrowLeft, Home } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Link } from 'react-router-dom';
 
@@ -112,14 +112,20 @@ export default function Chat() {
     <div className="flex h-screen bg-white font-sans">
       {/* Sidebar */}
       <div className="w-64 border-r border-slate-200 bg-slate-50 flex flex-col hidden md:flex">
-        <div className="p-4 border-b border-slate-200">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
            <Link to="/" className="flex items-center gap-2 font-heading font-bold text-xl text-slate-900">
              <ShieldCheck className="w-6 h-6 text-brand-600" />
              TenTrust
            </Link>
+           <Link to="/" title="Back to Main Site" className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors">
+             <Home className="w-4 h-4" />
+           </Link>
         </div>
-        <div className="p-4">
-          <button onClick={() => setMessages([{ role: 'ai', content: 'How can I help you today?' }])} className="w-full flex items-center justify-start gap-2 bg-white border border-slate-200 shadow-sm rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700">
+        <div className="p-4 space-y-2">
+          <Link to="/" className="w-full flex items-center justify-start gap-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors">
+            <ArrowLeft className="w-4 h-4 text-brand-600" /> Back to Main Site
+          </Link>
+          <button onClick={() => setMessages([{ role: 'ai', content: 'How can I help you today?' }])} className="w-full flex items-center justify-start gap-2 bg-white border border-slate-200 shadow-xs rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700">
             <Plus className="w-4 h-4" /> New chat
           </button>
         </div>
@@ -145,19 +151,24 @@ export default function Chat() {
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="h-16 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 bg-white shrink-0 gap-4 sm:gap-0 mt-4 sm:mt-0">
-          <div className="flex items-center gap-2 font-heading font-bold text-lg text-slate-800">
-            <ShieldCheck className="w-5 h-5 text-brand-600" />
-            TenTrust Intelligence
+        <div className="h-16 border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 bg-white shrink-0">
+          <div className="flex items-center gap-3">
+            <Link to="/" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-200">
+              <ArrowLeft className="w-4 h-4 text-brand-600" /> Back to Main Site
+            </Link>
+            <div className="hidden sm:flex items-center gap-2 font-heading font-bold text-lg text-slate-800">
+              <ShieldCheck className="w-5 h-5 text-brand-600" />
+              TenTrust Intelligence
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-slate-400 hidden sm:block" />
             <div className="flex flex-wrap gap-1">
               {languages.map(lang => (
                 <button 
                   key={lang}
                   onClick={() => changeLanguage(lang)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${language === lang ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${language === lang ? 'bg-slate-900 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
                 >
                   {lang}
                 </button>
@@ -165,6 +176,7 @@ export default function Chat() {
             </div>
           </div>
         </div>
+
 
         {/* Chat messages */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:px-48 space-y-8 bg-white relative">
