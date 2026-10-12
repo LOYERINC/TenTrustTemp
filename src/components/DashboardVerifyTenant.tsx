@@ -69,12 +69,55 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
   const [score, setScore] = useState<ReadinessScore | null>(null);
   const [checkStatus, setCheckStatus] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const selectedPackage = useMemo(() => packages.find((pkg) => pkg.id === selectedPackageId), [packages, selectedPackageId]);
   const selectedProperty = properties.find((property) => property.id === propertyId);
   const needsProviderCheck = selectedPackage?.checks.some((check) => check === 'identity' || check === 'credit_bureau' || check === '3_premium_checks');
+
+  const validateScreeningInput = () => {
+    const errors: Record<string, string> = {};
+    if (tenantName.trim().length < 2) errors.tenant_name = 'Enter the tenant’s full name (at least 2 characters).';
+    if (tenantPhone.trim().length < 6) errors.tenant_phone = 'Enter a phone number with at least 6 characters.';
+    if (tenantEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(tenantEmail.trim())) {
+      errors.tenant_email = 'Enter a valid email address or leave this field blank.';
+    }
+
+    if (mode === 'direct') {
+      if (!Number.isFinite(Number(monthlyRent)) || Number(monthlyRent) <= 0 || Number(monthlyRent) > 1_000_000_000) errors.monthly_rent = 'Enter a monthly rent above zero and no more than ₦1,000,000,000.';
+      if (!Number.isFinite(Number(monthlyIncome)) || Number(monthlyIncome) <= 0 || Number(monthlyIncome) > 1_000_000_000) errors.monthly_income = 'Enter a monthly income above zero and no more than ₦1,000,000,000.';
+      if (!consentConfirmed) errors.consent = 'Confirm the tenant has consented before submitting their details.';
+
+      const hasOnTime = onTimePayments.trim() !== '';
+      const hasTotal = totalPayments.trim() !== '';
+    if (hasOnTime !== hasTotal) {
+        if (!hasOnTime) errors.on_time_payments = 'Enter both payment counts or leave both blank.';
+        if (!hasTotal) errors.total_payments = 'Enter both payment counts or leave both blank.';
+    } else if (hasOnTime && hasTotal) {
+        const onTime = Number(onTimePayments);
+        const total = Number(totalPayments);
+        if (!Number.isInteger(onTime) || onTime < 0 || onTime > 12) errors.on_time_payments = 'Use a whole number from 0 to 12.';
+        if (!Number.isInteger(total) || total < 0 || total > 12) errors.total_payments = 'Use a whole number from 0 to 12.';
+        if (Number.isInteger(onTime) && Number.isInteger(total) && onTime > total) {
+          errors.on_time_payments = 'On-time payments cannot exceed total payments.';
+        }
+      }
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
 
   const refreshHistory = async () => {
     try {
@@ -133,20 +176,12 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
   const beginCheckout = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
+    if (!validateScreeningInput()) {
+      setError('Please correct the highlighted fields before continuing.');
+      return;
+    }
     if (!selectedPackage?.enabled) {
       setError(selectedPackage?.unavailable_reason || 'This package is not available right now.');
-      return;
-    }
-    if (mode === 'direct' && !consentConfirmed) {
-      setError('Confirm that the tenant has given consent before starting this screening.');
-      return;
-    }
-    if (mode === 'direct' && (!monthlyRent || !monthlyIncome)) {
-      setError('Enter the monthly rent and tenant income to calculate the readiness score.');
-      return;
-    }
-    if ((onTimePayments && !totalPayments) || Number(onTimePayments) > Number(totalPayments)) {
-      setError('Enter a valid number of on-time payments within the total payment count.');
       return;
     }
 
@@ -329,7 +364,7 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
           <button type="button" disabled={!selectedPackage?.enabled} onClick={() => { setError(''); setPageState('details'); }} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Continue to tenant details <ChevronRight className="h-4 w-4" /></button>
         </div>}
 
-        {pageState === 'details' && <form onSubmit={beginCheckout} className="space-y-6">
+        {pageState === 'details' && <form noValidate onSubmit={beginCheckout} className="space-y-6">
           <div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-900">2. Add tenant information</h3><p className="mt-1 text-xs text-slate-500">{selectedPackage?.name} · ₦{selectedPackage?.price.toLocaleString()}</p></div><button type="button" onClick={() => setPageState('packages')} className="text-xs font-semibold text-blue-700 hover:underline">Change package</button></div>
 
           <fieldset><legend className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">Choose how to collect screening details</legend><div className="grid gap-3 sm:grid-cols-2">
@@ -338,21 +373,21 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
           </div></fieldset>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div><label className={labelClass}>Tenant full name *</label><input required minLength={2} value={tenantName} onChange={(event) => setTenantName(event.target.value)} className={inputClass} autoComplete="name" /></div>
-            <div><label className={labelClass}>Phone number *</label><input required value={tenantPhone} onChange={(event) => setTenantPhone(event.target.value)} className={inputClass} autoComplete="tel" /></div>
-            <div><label className={labelClass}>Tenant email (optional)</label><input type="email" value={tenantEmail} onChange={(event) => setTenantEmail(event.target.value)} className={inputClass} autoComplete="email" /></div>
+            <div><label htmlFor="tenant-name" className={labelClass}>Tenant full name *</label><input id="tenant-name" required minLength={2} maxLength={160} aria-invalid={Boolean(fieldErrors.tenant_name)} aria-describedby={fieldErrors.tenant_name ? 'tenant-name-error' : undefined} value={tenantName} onChange={(event) => { setTenantName(event.target.value); clearFieldError('tenant_name'); }} className={`${inputClass} ${fieldErrors.tenant_name ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} autoComplete="name" />{fieldErrors.tenant_name && <p id="tenant-name-error" className="mt-1 text-xs text-rose-700">{fieldErrors.tenant_name}</p>}</div>
+            <div><label htmlFor="tenant-phone" className={labelClass}>Phone number *</label><input id="tenant-phone" required minLength={6} maxLength={40} aria-invalid={Boolean(fieldErrors.tenant_phone)} aria-describedby={fieldErrors.tenant_phone ? 'tenant-phone-error' : undefined} value={tenantPhone} onChange={(event) => { setTenantPhone(event.target.value); clearFieldError('tenant_phone'); }} className={`${inputClass} ${fieldErrors.tenant_phone ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} autoComplete="tel" />{fieldErrors.tenant_phone && <p id="tenant-phone-error" className="mt-1 text-xs text-rose-700">{fieldErrors.tenant_phone}</p>}</div>
+            <div><label htmlFor="tenant-email" className={labelClass}>Tenant email (optional)</label><input id="tenant-email" type="email" maxLength={200} aria-invalid={Boolean(fieldErrors.tenant_email)} aria-describedby={fieldErrors.tenant_email ? 'tenant-email-error' : undefined} value={tenantEmail} onChange={(event) => { setTenantEmail(event.target.value); clearFieldError('tenant_email'); }} className={`${inputClass} ${fieldErrors.tenant_email ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} autoComplete="email" />{fieldErrors.tenant_email && <p id="tenant-email-error" className="mt-1 text-xs text-rose-700">{fieldErrors.tenant_email}</p>}</div>
             <div><label className={labelClass}>Property</label><select value={propertyId} onChange={(event) => { const value = event.target.value; setPropertyId(value); const property = properties.find((item) => item.id === value); if (property?.rentAmount) setMonthlyRent(String(property.rentAmount / 12)); }} className={inputClass}><option value="">General rental application</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.title}</option>)}</select></div>
           </div>
 
           {mode === 'direct' && <>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div><label className={labelClass}>Monthly rent (₦) *</label><input required min="1" type="number" value={monthlyRent} onChange={(event) => setMonthlyRent(event.target.value)} className={inputClass} /></div>
-              <div><label className={labelClass}>Tenant monthly income (₦) *</label><input required min="1" type="number" value={monthlyIncome} onChange={(event) => setMonthlyIncome(event.target.value)} className={inputClass} /></div>
-              <div><label className={labelClass}>On-time rental payments (past 12)</label><input min="0" max="12" type="number" value={onTimePayments} onChange={(event) => setOnTimePayments(event.target.value)} className={inputClass} placeholder="Leave both blank if unavailable" /></div>
-              <div><label className={labelClass}>Total rental payments (past 12)</label><input min="0" max="12" type="number" value={totalPayments} onChange={(event) => setTotalPayments(event.target.value)} className={inputClass} placeholder="e.g. 12" /></div>
+              <div><label htmlFor="monthly-rent" className={labelClass}>Monthly rent (₦) *</label><input id="monthly-rent" required min="0.01" max="1000000000" step="any" type="number" aria-invalid={Boolean(fieldErrors.monthly_rent)} aria-describedby={fieldErrors.monthly_rent ? 'monthly-rent-error' : undefined} value={monthlyRent} onChange={(event) => { setMonthlyRent(event.target.value); clearFieldError('monthly_rent'); }} className={`${inputClass} ${fieldErrors.monthly_rent ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} />{fieldErrors.monthly_rent && <p id="monthly-rent-error" className="mt-1 text-xs text-rose-700">{fieldErrors.monthly_rent}</p>}</div>
+              <div><label htmlFor="monthly-income" className={labelClass}>Tenant monthly income (₦) *</label><input id="monthly-income" required min="0.01" max="1000000000" step="any" type="number" aria-invalid={Boolean(fieldErrors.monthly_income)} aria-describedby={fieldErrors.monthly_income ? 'monthly-income-error' : undefined} value={monthlyIncome} onChange={(event) => { setMonthlyIncome(event.target.value); clearFieldError('monthly_income'); }} className={`${inputClass} ${fieldErrors.monthly_income ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} />{fieldErrors.monthly_income && <p id="monthly-income-error" className="mt-1 text-xs text-rose-700">{fieldErrors.monthly_income}</p>}</div>
+              <div><label htmlFor="on-time-payments" className={labelClass}>On-time rental payments (past 12)</label><input id="on-time-payments" min="0" max="12" step="1" type="number" aria-invalid={Boolean(fieldErrors.on_time_payments)} aria-describedby={fieldErrors.on_time_payments ? 'on-time-payments-error' : undefined} value={onTimePayments} onChange={(event) => { setOnTimePayments(event.target.value); clearFieldError('on_time_payments'); }} className={`${inputClass} ${fieldErrors.on_time_payments ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} placeholder="Leave both blank if unavailable" />{fieldErrors.on_time_payments && <p id="on-time-payments-error" className="mt-1 text-xs text-rose-700">{fieldErrors.on_time_payments}</p>}</div>
+              <div><label htmlFor="total-payments" className={labelClass}>Total rental payments (past 12)</label><input id="total-payments" min="0" max="12" step="1" type="number" aria-invalid={Boolean(fieldErrors.total_payments)} aria-describedby={fieldErrors.total_payments ? 'total-payments-error' : undefined} value={totalPayments} onChange={(event) => { setTotalPayments(event.target.value); clearFieldError('total_payments'); }} className={`${inputClass} ${fieldErrors.total_payments ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15' : ''}`} placeholder="e.g. 12" />{fieldErrors.total_payments && <p id="total-payments-error" className="mt-1 text-xs text-rose-700">{fieldErrors.total_payments}</p>}</div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2"><label className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-xs text-slate-700"><input type="checkbox" checked={incomeEvidence} onChange={(event) => setIncomeEvidence(event.target.checked)} className="mt-0.5 accent-blue-700" />Income evidence is available</label><label className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-xs text-slate-700"><input type="checkbox" checked={rentalReference} onChange={(event) => setRentalReference(event.target.checked)} className="mt-0.5 accent-blue-700" />A rental reference is available</label></div>
-            <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950"><input required type="checkbox" checked={consentConfirmed} onChange={(event) => setConsentConfirmed(event.target.checked)} className="mt-1 accent-amber-700" /><span>I confirm the tenant has given informed permission for TenTrust to process information for this specific rental screening. I will not submit identity details unless that consent has been obtained.</span></label>
+            <div><label className={`flex items-start gap-3 rounded-2xl border p-4 text-xs leading-5 ${fieldErrors.consent ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-950'}`}><input id="tenant-consent" required type="checkbox" aria-invalid={Boolean(fieldErrors.consent)} aria-describedby={fieldErrors.consent ? 'tenant-consent-error' : undefined} checked={consentConfirmed} onChange={(event) => { setConsentConfirmed(event.target.checked); clearFieldError('consent'); }} className="mt-1 accent-amber-700" /><span>I confirm the tenant has given informed permission for TenTrust to process information for this specific rental screening. I will not submit identity details unless that consent has been obtained.</span></label>{fieldErrors.consent && <p id="tenant-consent-error" className="mt-1 text-xs text-rose-700">{fieldErrors.consent}</p>}</div>
           </>}
 
           {mode === 'tenant_link' && <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-900"><Info className="mt-0.5 h-4 w-4 shrink-0" />The tenant will enter income, rent history, supporting evidence information, and their consent on a secure link after payment. Identity details are requested only for packages that include an identity or credit check.</div>}
