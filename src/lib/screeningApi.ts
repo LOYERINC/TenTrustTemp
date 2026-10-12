@@ -60,7 +60,19 @@ export async function screeningApi<T>(path: string, options: RequestInit = {}, r
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = body?.detail;
-    const message = typeof detail === 'string' ? detail : detail?.message || 'We could not complete that screening step.';
+    const validationMessages = Array.isArray(detail)
+      ? detail.map((issue: { loc?: Array<string | number>; msg?: string }) => {
+          const field = issue.loc
+            ?.filter((part) => part !== 'body' && part !== 'query' && part !== 'path')
+            .map((part) => String(part).replaceAll('_', ' '))
+            .join(' ');
+          const message = issue.msg?.replace(/^Value error, /, '');
+          return message ? (field ? `${field}: ${message}` : message) : null;
+        }).filter((message): message is string => Boolean(message))
+      : [];
+    const message = typeof detail === 'string'
+      ? detail
+      : detail?.message || validationMessages.join('; ') || 'We could not complete that screening step.';
     throw new ScreeningApiError(message, response.status, detail);
   }
   return body as T;
