@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { BadgeCheck, CheckCircle2, ChevronRight, Copy, CreditCard, ExternalLink, Info, Link as LinkIcon, LoaderCircle, ShieldCheck, User, UserRoundPlus, XCircle } from '../lib/icons';
-import { ScreeningPackage, ReadinessScore, formatScreeningError, screeningApi } from '../lib/screeningApi';
+import { ScreeningApiError, ScreeningPackage, ReadinessScore, formatScreeningError, screeningApi } from '../lib/screeningApi';
 import { redirectToPaymentCheckout } from '../lib/paymentCheckout';
 
 interface Property {
@@ -32,6 +32,7 @@ interface ScreeningHistoryItem {
   total_payments?: number | null;
   income_evidence?: boolean;
   rental_reference?: boolean;
+  payment_reference?: string | null;
   score: ReadinessScore | null;
   created_at: string;
 }
@@ -54,6 +55,7 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
   const [tenantPhone, setTenantPhone] = useState('');
   const [tenantEmail, setTenantEmail] = useState('');
   const [propertyId, setPropertyId] = useState(properties[0]?.id || '');
+  const [screeningPropertyTitle, setScreeningPropertyTitle] = useState('');
   const [monthlyRent, setMonthlyRent] = useState(properties[0]?.rentAmount ? String(properties[0].rentAmount / 12) : '');
   const [monthlyIncome, setMonthlyIncome] = useState('');
   const [onTimePayments, setOnTimePayments] = useState('');
@@ -68,6 +70,7 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
   const [tenantLink, setTenantLink] = useState('');
   const [score, setScore] = useState<ReadinessScore | null>(null);
   const [checkStatus, setCheckStatus] = useState<Record<string, string>>({});
+  const [screeningStatusMessage, setScreeningStatusMessage] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -76,6 +79,8 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
   const selectedPackage = useMemo(() => packages.find((pkg) => pkg.id === selectedPackageId), [packages, selectedPackageId]);
   const selectedProperty = properties.find((property) => property.id === propertyId);
   const needsProviderCheck = selectedPackage?.checks.some((check) => check === 'identity' || check === 'credit_bureau' || check === '3_premium_checks');
+  const providerCheckEntries = Object.entries(checkStatus).filter(([key]) => key !== 'readiness_score');
+  const reportSources = Object.entries(score?.input_sources || {});
 
   const validateScreeningInput = () => {
     const errors: Record<string, string> = {};
@@ -128,6 +133,71 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
     }
   };
 
+  const showPaidScreening = async (id: string, reference = '') => {
+    setPageState('processing');
+    setError('');
+    const record = await screeningApi<ScreeningHistoryItem>(`/api/screenings/${encodeURIComponent(id)}`);
+    setScreeningId(id);
+    setSelectedPackageId(record.package_id);
+    setPaymentReference(reference || record.payment_reference || 'Payment confirmed');
+    setMode(record.intake_mode);
+    setTenantName(record.tenant_name);
+    setTenantPhone(record.tenant_phone);
+    setTenantEmail(record.tenant_email || '');
+    setScreeningPropertyTitle(record.property_title);
+    setMonthlyRent(record.monthly_rent == null ? '' : String(record.monthly_rent));
+    setMonthlyIncome(record.monthly_income == null ? '' : String(record.monthly_income));
+    setOnTimePayments(record.on_time_payments == null ? '' : String(record.on_time_payments));
+    setTotalPayments(record.total_payments == null ? '' : String(record.total_payments));
+    setIncomeEvidence(!!record.income_evidence);
+    setRentalReference(!!record.rental_reference);
+    setCheckStatus(record.check_status || {});
+    setProcessingConsent(record.intake_mode === 'direct');
+
+    if (record.status === 'complete' && record.score) {
+      setScore(record.score);
+      setPageState('complete');
+      await refreshHistory();
+      return;
+    }
+
+    if (record.intake_mode === 'direct') {
+      const { packages: catalog } = await screeningApi<{ packages: ScreeningPackage[] }>('/api/screenings/packages', {}, false);
+      const selected = catalog.find((item) => item.id === record.package_id);
+      const scoreOnlyPackage = selected?.checks.every((check) => check === 'readiness_score');
+      if (scoreOnlyPackage) {
+        try {
+          const result = await screeningApi<{ status: string; score: ReadinessScore; check_status: Record<string, string> }>(
+            `/api/screenings/${encodeURIComponent(id)}/complete`,
+            { method: 'POST', body: JSON.stringify({
+              tenant_name: record.tenant_name,
+              tenant_phone: record.tenant_phone,
+              tenant_email: record.tenant_email || null,
+              monthly_rent: Number(record.monthly_rent),
+              monthly_income: Number(record.monthly_income),
+              on_time_payments: record.total_payments == null ? null : Number(record.on_time_payments || 0),
+              total_payments: record.total_payments == null ? null : Number(record.total_payments),
+              income_evidence: !!record.income_evidence,
+              rental_reference: !!record.rental_reference,
+              consent: true,
+            }) },
+          );
+          setScore(result.score);
+          setCheckStatus(result.check_status);
+          setPageState('complete');
+          await refreshHistory();
+          return;
+        } catch (requestError) {
+          setPageState('paid');
+          setError(formatScreeningError(requestError));
+          return;
+        }
+      }
+    }
+
+    setPageState('paid');
+  };
+
   useEffect(() => {
     screeningApi<{ packages: ScreeningPackage[] }>('/api/screenings/packages', {}, false)
       .then(({ packages: availablePackages }) => {
@@ -155,22 +225,31 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
     screeningApi<{ status: string; tenant_url?: string; payment_status: string; screening_id: string }>(
       `/api/screenings/${encodeURIComponent(returnedScreeningId)}/verify-payment?reference=${encodeURIComponent(reference)}`,
       { method: 'POST' },
-    ).then((result) => {
+    ).then(async (result) => {
       if (result.payment_status !== 'paid') throw new Error('Payment is not confirmed yet. Please refresh this page in a moment.');
       if (result.tenant_url) {
+        const record = await screeningApi<ScreeningHistoryItem>(`/api/screenings/${encodeURIComponent(returnedScreeningId)}`);
+        setSelectedPackageId(record.package_id);
+        setTenantName(record.tenant_name);
+        setTenantPhone(record.tenant_phone);
+        setTenantEmail(record.tenant_email || '');
+        setScreeningPropertyTitle(record.property_title);
         setTenantLink(result.tenant_url);
         setPageState('link_ready');
         void refreshHistory();
       } else {
-        setPageState('paid');
-        void refreshHistory();
+        await showPaidScreening(returnedScreeningId, reference);
       }
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('screening');
       cleanUrl.searchParams.delete('reference');
       cleanUrl.searchParams.delete('tx_ref');
       window.history.replaceState({}, '', cleanUrl);
-    }).catch((requestError) => setError(formatScreeningError(requestError))).finally(() => setBusy(false));
+    }).catch((requestError) => {
+      setPageState('packages');
+      setError(formatScreeningError(requestError));
+      void refreshHistory();
+    }).finally(() => setBusy(false));
   }, []);
 
   const beginCheckout = async (event: FormEvent<HTMLFormElement>) => {
@@ -273,6 +352,10 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
       setPageState('complete');
       await refreshHistory();
     } catch (requestError) {
+      if (requestError instanceof ScreeningApiError) {
+        const detail = requestError.detail as { check_status?: Record<string, string> } | undefined;
+        if (detail?.check_status) setCheckStatus(detail.check_status);
+      }
       setError(formatScreeningError(requestError));
       setPageState('paid');
     } finally {
@@ -290,6 +373,27 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
     }
   };
 
+  const checkTenantSubmission = async () => {
+    setBusy(true);
+    setError('');
+    setScreeningStatusMessage('');
+    try {
+      const record = await screeningApi<ScreeningHistoryItem>(`/api/screenings/${encodeURIComponent(screeningId)}`);
+      setCheckStatus(record.check_status || {});
+      if (record.status === 'complete' && record.score) {
+        setScore(record.score);
+        setPageState('complete');
+      } else {
+        setScreeningStatusMessage('The tenant has not completed the secure form yet. The report will be available here after they submit it.');
+      }
+      await refreshHistory();
+    } catch (requestError) {
+      setError(formatScreeningError(requestError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const resumeScreening = async (id: string) => {
     setBusy(true);
     setError('');
@@ -301,6 +405,7 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
       setTenantName(record.tenant_name);
       setTenantPhone(record.tenant_phone);
       setTenantEmail(record.tenant_email || '');
+      setScreeningPropertyTitle(record.property_title);
       setMonthlyRent(record.monthly_rent ? String(record.monthly_rent) : '');
       setMonthlyIncome(record.monthly_income ? String(record.monthly_income) : '');
       setOnTimePayments(record.on_time_payments == null ? '' : String(record.on_time_payments));
@@ -316,7 +421,7 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
         setTenantLink(result.tenant_url);
         setPageState('link_ready');
       } else if (record.payment_status === 'paid') {
-        setPageState('paid');
+        await showPaidScreening(id, record.payment_reference || '');
       } else {
         const checkout = await screeningApi<{ authorization_url: string }>(`/api/screenings/${encodeURIComponent(id)}/checkout`, { method: 'POST' });
         if (!checkout.authorization_url) throw new Error('Checkout did not return a payment link. Please retry.');
@@ -332,17 +437,17 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
 
   const reset = () => {
     setPageState('packages');
-    setTenantName(''); setTenantPhone(''); setTenantEmail(''); setMonthlyIncome(''); setOnTimePayments(''); setTotalPayments('');
+    setTenantName(''); setTenantPhone(''); setTenantEmail(''); setMonthlyRent(selectedProperty?.rentAmount ? String(selectedProperty.rentAmount / 12) : ''); setMonthlyIncome(''); setOnTimePayments(''); setTotalPayments('');
     setIncomeEvidence(false); setRentalReference(false); setConsentConfirmed(false); setProcessingConsent(false); setBvn('');
-    setScreeningId(''); setPaymentReference(''); setTenantLink(''); setScore(null); setCheckStatus({}); setUseBundleCredit(false); setError('');
+    setScreeningId(''); setPaymentReference(''); setTenantLink(''); setScore(null); setCheckStatus({}); setFieldErrors({}); setScreeningStatusMessage(''); setUseBundleCredit(false); setScreeningPropertyTitle(''); setError('');
   };
 
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
       <div className="brand-banner-art px-6 py-7 text-white md:px-9">
         <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider"><ShieldCheck className="h-4 w-4" /> Tenant screening</div>
-        <h2 className="text-2xl font-extrabold md:text-3xl">Choose a screening package</h2>
-        <p className="mt-2 max-w-2xl text-sm text-blue-100">Enter the tenant’s details, complete secure payment, then receive an explainable readiness score from 1 to 100.</p>
+        <h2 className="text-2xl font-extrabold md:text-3xl">{pageState === 'complete' ? 'Screening report' : pageState === 'link_ready' ? 'Tenant link ready' : pageState === 'paid' || pageState === 'processing' ? 'Your screening is underway' : 'Choose a screening package'}</h2>
+        <p className="mt-2 max-w-2xl text-sm text-blue-100">{pageState === 'complete' ? 'Review the advisory score, supporting factors, and any separate provider checks.' : pageState === 'link_ready' ? 'Send the secure link to the tenant. The report will appear here after they submit their information and consent.' : pageState === 'paid' || pageState === 'processing' ? 'Payment is confirmed. We’ll show the report as soon as the required information and checks are ready.' : 'Enter tenant details, pay securely, and follow the screening through to its report.'}</p>
       </div>
 
       <div className="space-y-7 p-5 md:p-9">
@@ -398,13 +503,14 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
         </form>}
 
         {pageState === 'paid' && <div className="space-y-5">
-          <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"><CheckCircle2 className="h-5 w-5" /><div><div className="font-bold">Payment confirmed</div><div className="text-xs">Reference: {paymentReference}</div></div></div>
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-bold">Payment confirmed</div><div className="mt-1 text-xs">{tenantName} · {screeningPropertyTitle || selectedProperty?.title || 'Rental application'} · reference {paymentReference}</div></div></div>
           <form onSubmit={completeDirectScreening} className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <div><h3 className="font-bold text-slate-900">Complete the paid screening</h3><p className="mt-1 text-xs text-slate-600">The score is generated after required inputs and checks are complete. Your BVN is sent to the provider for this request and is not retained in the screening record.</p></div>
-            {needsProviderCheck && <div><label className={labelClass}>Tenant BVN *</label><input required inputMode="numeric" maxLength={11} value={bvn} onChange={(event) => setBvn(event.target.value.replace(/\D/g, ''))} className={inputClass} placeholder="11 digits" /></div>}
-            <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={processingConsent} onChange={(event) => setProcessingConsent(event.target.checked)} className="mt-0.5 accent-blue-700" />I confirm consent covers these screening checks and the tenant’s information is accurate to the best of my knowledge.</label>
-            <button type="submit" disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-50"><ShieldCheck className="h-4 w-4" />{busy ? 'Running screening…' : 'Run checks and calculate score'}</button>
+            <div><h3 className="font-bold text-slate-900">{needsProviderCheck ? 'One last step: provide the tenant’s BVN' : 'Finish generating the readiness report'}</h3><p className="mt-1 text-xs leading-5 text-slate-600">{needsProviderCheck ? 'This package includes identity or credit checks. The BVN is sent securely to the configured provider for this request and is not stored in the screening record. The readiness score remains separate from provider results.' : 'Your payment and consent are recorded. Retry report generation to continue; you will not be charged again.'}</p></div>
+            {needsProviderCheck && <div><label htmlFor="paid-tenant-bvn" className={labelClass}>Tenant BVN *</label><input id="paid-tenant-bvn" required inputMode="numeric" pattern="[0-9]{11}" maxLength={11} value={bvn} onChange={(event) => setBvn(event.target.value.replace(/\D/g, ''))} className={inputClass} placeholder="11 digits" /><p className="mt-1 text-[11px] text-slate-500">Only enter this after the tenant has consented to the included provider check.</p></div>}
+            <label className="flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={processingConsent} onChange={(event) => setProcessingConsent(event.target.checked)} className="mt-0.5 accent-blue-700" />I confirm the tenant’s consent still covers these checks and the information is accurate.</label>
+            <button type="submit" disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-50"><ShieldCheck className="h-4 w-4" />{busy ? 'Preparing the report…' : needsProviderCheck ? 'Run provider checks and create report' : 'Retry report generation'}</button>
           </form>
+          {providerCheckEntries.length > 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h4 className="text-sm font-bold text-amber-950">Check status</h4><p className="mt-1 text-xs text-amber-900">A report is created after required provider checks finish. Failed or unavailable checks are never shown as verified.</p>{providerCheckEntries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 border-t border-amber-200 py-2 text-xs capitalize text-amber-950"><span>{key.replaceAll('_', ' ')}</span><span className="text-right font-semibold">{value.replaceAll('_', ' ')}</span></div>)}</div>}
         </div>}
 
         {pageState === 'processing' && <div className="flex flex-col items-center gap-3 py-10 text-center"><LoaderCircle className="h-9 w-9 animate-spin text-blue-700" /><p className="font-bold text-slate-900">Processing the screening</p><p className="max-w-md text-sm text-slate-600">No result will be shown as verified unless the selected provider check succeeds.</p></div>}
@@ -412,15 +518,19 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
         {pageState === 'link_ready' && <div className="space-y-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
           <div className="flex items-center gap-3 text-emerald-900"><CheckCircle2 className="h-6 w-6" /><div><h3 className="font-bold">Payment confirmed · tenant link ready</h3><p className="text-xs">The link expires in seven days and can be used once.</p></div></div>
           <div className="flex flex-col gap-2 sm:flex-row"><input readOnly value={tenantLink} className={`${inputClass} font-mono text-xs`} /><button type="button" onClick={copyTenantLink} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white">{copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied ? 'Copied' : 'Copy link'}</button></div>
-          <div className="flex flex-wrap items-center gap-3"><a href={`https://wa.me/${tenantPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Please complete your TenTrust tenant screening using this secure link: ${tenantLink}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-xs font-bold text-white"><LinkIcon className="h-4 w-4" />Share via WhatsApp</a><a href={tenantLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-bold text-slate-700"><ExternalLink className="h-4 w-4" />Preview tenant form</a><button type="button" onClick={reset} className="ml-auto text-xs font-semibold text-slate-600 hover:underline">Start another screening</button></div>
+          {screeningStatusMessage && <p role="status" className="rounded-xl border border-blue-100 bg-white p-3 text-xs leading-5 text-blue-900">{screeningStatusMessage}</p>}
+          <div className="flex flex-wrap items-center gap-3"><a href={`https://wa.me/${tenantPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Please complete your TenTrust tenant screening using this secure link: ${tenantLink}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-xs font-bold text-white"><LinkIcon className="h-4 w-4" />Share via WhatsApp</a><a href={tenantLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-bold text-slate-700"><ExternalLink className="h-4 w-4" />Preview tenant form</a><button type="button" disabled={busy} onClick={() => void checkTenantSubmission()} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-3 text-xs font-bold text-blue-800 disabled:opacity-50">{busy && <LoaderCircle className="h-4 w-4 animate-spin" />}Check for report</button><button type="button" onClick={reset} className="ml-auto text-xs font-semibold text-slate-600 hover:underline">Start another screening</button></div>
         </div>}
 
         {pageState === 'complete' && score && <div className="space-y-5">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><div className="flex flex-wrap items-center justify-between gap-4"><div><div className="text-xs font-bold uppercase tracking-wide text-emerald-800">{score.label}</div><div className="mt-1 text-5xl font-black text-emerald-800">{score.score}<span className="text-lg font-semibold"> / 100</span></div></div><div className="rounded-xl bg-white px-3 py-2 text-xs font-bold capitalize text-emerald-800">{score.confidence} confidence · {score.evidence_coverage}% evidence</div></div><p className="mt-3 text-xs leading-5 text-emerald-950">{score.disclaimer}</p></div>
-          <div className="grid gap-3 sm:grid-cols-2">{score.factors.map((factor) => <div key={factor.key} className="rounded-xl border border-slate-200 p-4"><div className="flex justify-between gap-2 text-sm font-semibold text-slate-800"><span>{factor.label}</span><span>{factor.score}/100</span></div><div className="mt-1 text-xs text-slate-500">Weight {Math.round(factor.weight * 100)}%</div></div>)}</div>
-          <p className="text-xs leading-5 text-slate-500">Income, rent, rental history, and evidence availability are reported by the landlord or tenant. Supporting documents are not independently verified by this score. Provider identity and credit checks are listed separately.</p>
-          {Object.keys(checkStatus).length > 0 && <div className="rounded-xl border border-slate-200 p-4"><h4 className="mb-2 text-sm font-bold text-slate-900">Separate provider checks</h4>{Object.entries(checkStatus).map(([key, value]) => <div key={key} className="flex justify-between border-t border-slate-100 py-2 text-xs capitalize"><span>{key.replaceAll('_', ' ')}</span><span className="font-semibold">{value}</span></div>)}</div>}
-          <div className="flex items-start gap-2 rounded-xl bg-blue-50 p-4 text-xs leading-5 text-blue-900"><Info className="mt-0.5 h-4 w-4 shrink-0" />This is an advisory score based on information provided for this check. It is not an automatic approval or rejection decision.</div>
+          <div className="grid gap-5 rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-5 sm:grid-cols-[auto_1fr] sm:items-center sm:p-7">
+            <div className="mx-auto grid h-36 w-36 place-items-center rounded-full p-2" role="img" aria-label={`Readiness score ${score.score} out of 100`} style={{ background: `conic-gradient(#1d4ed8 ${score.score}%, #dbeafe ${score.score}% 100%)` }}><div className="grid h-full w-full place-content-center rounded-full bg-white text-center shadow-inner"><span className="text-4xl font-black tracking-tight text-blue-950">{score.score}</span><span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">out of 100</span></div></div>
+            <div><div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-800"><ShieldCheck className="h-4 w-4" /> Advisory result</div><h3 className="mt-3 text-xl font-bold text-slate-950">{score.label}</h3><p className="mt-1 text-sm text-slate-600">{tenantName}{screeningPropertyTitle || selectedProperty?.title ? ` · ${screeningPropertyTitle || selectedProperty?.title}` : ''}</p><div className="mt-3 flex flex-wrap gap-2"><span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-semibold capitalize text-blue-900">{score.confidence} confidence</span><span className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900">{score.evidence_coverage}% evidence coverage</span></div></div>
+          </div>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5"><div className="mb-4"><h4 className="font-bold text-slate-900">What shaped this score</h4><p className="mt-1 text-xs text-slate-500">Each factor uses a 100-point scale and is weighted as shown.</p></div><div className="space-y-4">{score.factors.map((factor) => <div key={factor.key}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="font-semibold text-slate-800">{factor.label}<span className="ml-2 text-xs font-normal text-slate-500">{Math.round(factor.weight * 100)}% weight</span></span><span className="font-bold tabular-nums text-blue-900">{factor.score}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100" role="meter" aria-label={`${factor.label} factor score`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={factor.score}><div className="h-full rounded-full bg-blue-700" style={{ width: `${factor.score}%` }} /></div></div>)}</div></section>
+          {reportSources.length > 0 && <section className="rounded-2xl border border-slate-200 bg-white p-5"><h4 className="font-bold text-slate-900">Information sources</h4><p className="mt-1 text-xs text-slate-500">This shows who supplied each item. Reported information and document availability are not independently verified by the score.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{reportSources.map(([key, source]) => <div key={key} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs"><span className="capitalize text-slate-600">{key.replaceAll('_', ' ')}</span><span className="text-right font-semibold text-slate-800">{{ landlord_reported: 'Landlord reported', tenant_reported: 'Tenant reported', landlord_supplied: 'Landlord supplied', not_provided: 'Not provided' }[source] || source.replaceAll('_', ' ')}</span></div>)}</div></section>}
+          {providerCheckEntries.length > 0 && <div className="rounded-2xl border border-slate-200 bg-white p-5"><div className="mb-2"><h4 className="text-sm font-bold text-slate-900">Identity and credit checks</h4><p className="mt-1 text-xs text-slate-500">These provider results are separate from the readiness score.</p></div>{providerCheckEntries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 border-t border-slate-100 py-3 text-xs capitalize"><span className="text-slate-700">{key.replaceAll('_', ' ')}</span><span className="font-semibold text-slate-900">{value.replaceAll('_', ' ')}</span></div>)}</div>}
+          <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950"><Info className="mt-0.5 h-4 w-4 shrink-0" /><span>{score.disclaimer} Identity status is reported separately and is never included in the score.</span></div>
           <button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Start another screening</button>
         </div>}
 

@@ -23,6 +23,7 @@ export interface ReadinessScore {
   evidence_coverage: number;
   source: 'rules-based';
   factors: Array<{ key: string; label: string; weight: number; score: number }>;
+  input_sources?: Record<string, string>;
   identity_status: string;
   disclaimer: string;
 }

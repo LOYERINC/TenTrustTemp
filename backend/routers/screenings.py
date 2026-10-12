@@ -270,11 +270,12 @@ async def _process_screening(
         income_evidence=payload.income_evidence,
         rental_reference=payload.rental_reference,
     )
+    intake_source = "tenant_reported" if consent_method == "tenant_direct_consent" else "landlord_reported"
     score["input_sources"] = {
-        "income": "tenant_supplied",
-        "rent": "landlord_supplied" if row.get("monthly_rent") else "tenant_supplied",
-        "rental_history": "tenant_supplied" if payload.total_payments else "not_provided",
-        "evidence": "tenant_supplied",
+        "income": intake_source,
+        "rent": "landlord_supplied" if row.get("monthly_rent") else "tenant_reported",
+        "rental_history": intake_source if payload.total_payments else "not_provided",
+        "evidence": intake_source,
     }
 
     updated = await store.patch("screening_requests", {"id": f"eq.{row['id']}"}, {
