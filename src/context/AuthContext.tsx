@@ -15,7 +15,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   signInWithEmail: (email: string, password: string) => Promise<{ error: any }>;
-  signUpWithEmail: (email: string, password: string, metadata: { firstName: string; lastName: string; role: UserRole }) => Promise<{ error: any }>;
+  signUpWithEmail: (email: string, password: string, metadata: { firstName: string; lastName: string; role: UserRole }) => Promise<{ error: any; requiresEmailConfirmation?: boolean }>;
   signInWithGoogle: (role?: UserRole) => Promise<void>;
   signInWithMagicLink: (email: string, role?: UserRole) => Promise<{ error: any }>;
   loginAsDemo: (role: UserRole) => Promise<void>;
@@ -45,19 +45,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    // 1. Check local active user
-    const savedActiveUser = localStorage.getItem('tentrust_active_user');
-    if (savedActiveUser) {
-      try {
-        const parsed = JSON.parse(savedActiveUser);
-        setUser(parsed);
-        setIsLoading(false);
-      } catch (e) {}
+    if (!isSupabaseConfigured()) {
+      // Local accounts are only a development fallback when Supabase is not configured.
+      const savedActiveUser = localStorage.getItem('tentrust_active_user');
+      if (savedActiveUser) {
+        try {
+          setUser(JSON.parse(savedActiveUser));
+        } catch {
+          localStorage.removeItem('tentrust_active_user');
+        }
+      }
+      setIsLoading(false);
+      return;
     }
 
-    // 2. Check Supabase Auth state if configured
-    if (isSupabaseConfigured()) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+    // A local/demo profile is not an authenticated Supabase session and must never
+    // unlock routes that call the protected screening API.
+    localStorage.removeItem('tentrust_active_user');
+    supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           const meta = session.user.user_metadata || {};
           const nameParts = (meta.full_name || meta.name || '').split(' ');
@@ -71,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           setUser(authUser);
           localStorage.setItem('tentrust_active_user', JSON.stringify(authUser));
+        } else {
+          setUser(null);
         }
         setIsLoading(false);
       }).catch(() => {
@@ -91,41 +98,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           setUser(authUser);
           localStorage.setItem('tentrust_active_user', JSON.stringify(authUser));
-        } else if (!localStorage.getItem('tentrust_active_user')) {
+        } else {
           setUser(null);
+          localStorage.removeItem('tentrust_active_user');
         }
         setIsLoading(false);
       });
 
-      return () => subscription.unsubscribe();
-    } else {
-      setIsLoading(false);
-    }
+    return () => subscription.unsubscribe();
   }, []);
 
   const signInWithEmail = async (email: string, password: string) => {
     const cleanEmail = email.trim().toLowerCase();
-
-    // Check local accounts first
-    const accounts = getLocalAccounts();
-    const existingLocal = accounts[cleanEmail];
-    if (existingLocal) {
-      if (existingLocal.password === password) {
-        const loggedUser: User = {
-          id: existingLocal.id,
-          email: cleanEmail,
-          firstName: existingLocal.firstName,
-          lastName: existingLocal.lastName,
-          role: existingLocal.role,
-          verified: true,
-        };
-        setUser(loggedUser);
-        localStorage.setItem('tentrust_active_user', JSON.stringify(loggedUser));
-        return { error: null };
-      } else {
-        return { error: { message: 'Incorrect password. Please try again.' } };
-      }
-    }
 
     if (isSupabaseConfigured()) {
       try {
@@ -151,6 +135,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err: any) {
         return { error: { message: err.message || 'Error signing in' } };
       }
+    }
+
+    // Check local development accounts only when there is no Supabase project configured.
+    const accounts = getLocalAccounts();
+    const existingLocal = accounts[cleanEmail];
+    if (existingLocal) {
+      if (existingLocal.password === password) {
+        const loggedUser: User = {
+          id: existingLocal.id,
+          email: cleanEmail,
+          firstName: existingLocal.firstName,
+          lastName: existingLocal.lastName,
+          role: existingLocal.role,
+          verified: true,
+        };
+        setUser(loggedUser);
+        localStorage.setItem('tentrust_active_user', JSON.stringify(loggedUser));
+        return { error: null };
+      }
+      return { error: { message: 'Incorrect email or password. Please try again.' } };
     }
 
     // Default demo fallback if no account exists yet
@@ -189,12 +193,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
-        if (error) {
-          // If Supabase errors, still allow seamless registration
-          console.warn('Supabase signup note:', error.message);
+        if (error) return { error };
+        if (!data.user) return { error: { message: 'Supabase did not create the account. Please try again.' } };
+
+        if (!data.session) {
+          setUser(null);
+          localStorage.removeItem('tentrust_active_user');
+          return { error: null, requiresEmailConfirmation: true };
         }
 
-        const newUserId = data?.user?.id || 'usr-' + Date.now();
+        const newUserId = data.user.id;
         const newUser: User = {
           id: newUserId,
           email: cleanEmail,
@@ -204,8 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           verified: true,
         };
 
-        // Save local record and activate
-        saveLocalAccount(cleanEmail, { ...newUser, password });
+        // Only an active Supabase session can unlock the screening service.
         setUser(newUser);
         localStorage.setItem('tentrust_active_user', JSON.stringify(newUser));
 
@@ -225,19 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         return { error: null };
       } catch (err: any) {
-        // Fallback gracefully
-        const newUser: User = {
-          id: 'usr-' + Date.now(),
-          email: cleanEmail,
-          firstName: metadata.firstName,
-          lastName: metadata.lastName,
-          role: metadata.role,
-          verified: true,
-        };
-        saveLocalAccount(cleanEmail, { ...newUser, password });
-        setUser(newUser);
-        localStorage.setItem('tentrust_active_user', JSON.stringify(newUser));
-        return { error: null };
+        return { error: { message: err.message || 'Unable to create your account. Please try again.' } };
       }
     }
 
@@ -273,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
     } catch (e) {
-      await loginAsDemo(role);
+      throw e;
     }
   };
 
@@ -287,13 +282,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             emailRedirectTo: window.location.origin + '/dashboard',
           },
         });
-        if (error) {
-          await loginAsDemo(role);
-        }
+        if (error) return { error };
         return { error: null };
       } catch (err) {
-        await loginAsDemo(role);
-        return { error: null };
+        return { error: err };
       }
     }
     await loginAsDemo(role);

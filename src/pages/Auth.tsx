@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Building, User, ArrowRight, CheckCircle2, Lock, Mail, KeyRound, Sparkles, AlertCircle } from '../lib/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 export default function Auth() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -53,9 +54,11 @@ export default function Auth() {
           setIsProcessing(false);
           return;
         }
-        const { error } = await signUpWithEmail(email, password, { firstName, lastName, role });
+        const { error, requiresEmailConfirmation } = await signUpWithEmail(email, password, { firstName, lastName, role });
         if (error) {
           setErrorMessage(error.message || 'Error creating account');
+        } else if (requiresEmailConfirmation) {
+          setSuccessMessage('Account created. Check your email to confirm it, then sign in to continue.');
         } else {
           setSuccessMessage('Account created! Please check your email or sign in.');
         }
@@ -72,9 +75,7 @@ export default function Auth() {
     try {
       await signInWithGoogle(role);
     } catch (error: any) {
-      console.error(error);
-      setErrorMessage(error.message || 'Google sign-in error. Using demo access.');
-      await loginAsDemo(role);
+      setErrorMessage(error.message || 'Google sign-in could not be started. Please use email and password.');
     } finally {
       setIsProcessing(false);
     }
@@ -337,8 +338,8 @@ export default function Auth() {
               Continue with Google
             </button>
 
-            {/* Instant Demo Quick Access */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
+            {/* Local demo access is only available without a configured Supabase project. */}
+            {!isSupabaseConfigured() && <div className="pt-2 border-t border-slate-100 space-y-2">
               <p className="text-[11px] text-center font-bold uppercase tracking-wider text-slate-400">Instant Demo Access</p>
               <div className="grid grid-cols-3 gap-2">
                 <button
@@ -363,7 +364,7 @@ export default function Auth() {
                   👤 Tenant
                 </button>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>
