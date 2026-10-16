@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/comingsoon",
+      "destination": "/comingsoon/",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/comingsoon/",
+      "destination": "/comingsoon/index.html"
+    }
+  ]
+}
