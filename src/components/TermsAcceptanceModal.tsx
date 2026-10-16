@@ -37,7 +37,7 @@ export default function TermsAcceptanceModal() {
           </div>
           <div className="flex-1">
             <h2 className="font-heading font-black text-white text-lg tracking-tight">Welcome to TenTrust</h2>
-            <p className="text-blue-200 text-xs mt-0.5">Before you continue, please review our terms</p>
+            <p className="text-blue-200 text-xs mt-0.5">Please read these rules before you go on.</p>
           </div>
         </div>
 
@@ -51,7 +51,7 @@ export default function TermsAcceptanceModal() {
                 <p className="text-xs font-bold text-[#0c2340]">Terms of Service</p>
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                You agree to use TenTrust only for lawful tenant screening and to always obtain tenant consent before any check.
+                Use TenTrust only to check a tenant. Get the tenant's yes before any check.
               </p>
               <Link
                 to="/terms"
@@ -67,7 +67,7 @@ export default function TermsAcceptanceModal() {
                 <p className="text-xs font-bold text-[#0c2340]">Privacy Policy</p>
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                We process BVN and identity data strictly for verification. Data is protected under the NDPR.
+                We use the details needed for each check. See how we use and keep your data.
               </p>
               <Link
                 to="/privacy"
@@ -82,9 +82,9 @@ export default function TermsAcceptanceModal() {
           {/* Key points */}
           <div className="space-y-2">
             {[
-              'You must obtain tenant consent before running any verification check.',
-              'Verification data may only be used for assessing tenancy applications.',
-              'We use Mono and Prembly as licensed data processors, compliant with NDPR.',
+              'Get the tenant’s yes before a check starts.',
+              'Use tenant details only to review a home request.',
+              'Mono and other check firms may help us run checks.',
             ].map((point) => (
               <div key={point} className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -103,11 +103,11 @@ export default function TermsAcceptanceModal() {
               onChange={(e) => setChecked(e.target.checked)}
             />
             <span className="text-xs text-slate-700 leading-relaxed">
-              I have read and agree to TenTrust's{' '}
+              I read and agree to TenTrust's{' '}
               <Link to="/terms" target="_blank" className="text-[#0747a6] font-semibold hover:underline">Terms of Service</Link>
               {' '}and{' '}
               <Link to="/privacy" target="_blank" className="text-emerald-600 font-semibold hover:underline">Privacy Policy</Link>.
-              I understand that I must obtain tenant consent before initiating any verification check.
+              I will get the tenant’s yes before I start a check.
             </span>
           </label>
 
@@ -119,11 +119,11 @@ export default function TermsAcceptanceModal() {
               bg-[#0747a6] hover:bg-[#063c8f] text-white shadow-md shadow-[#0747a6]/20
               disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
-            I Agree — Continue to TenTrust
+            I agree — continue
           </button>
 
           <p className="text-center text-[10px] text-slate-400">
-            Your acceptance is stored locally on this device. You will not be shown this again.
+            We save your choice on this device. You will not see this again here.
           </p>
         </div>
       </div>

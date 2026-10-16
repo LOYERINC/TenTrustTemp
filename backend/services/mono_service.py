@@ -19,6 +19,34 @@ class MonoService:
             "Accept": "application/json",
         }
 
+    async def verify_identity(self, *, document_type: str, document_number: str, date_of_birth: str) -> Dict[str, Any]:
+        """Verify identity with Mono Mashup. The caller must collect consent first."""
+        if not self.secret_key:
+            raise HTTPException(status_code=503, detail="Identity verification is not available right now.")
+        if document_type not in ("bvn", "nin"):
+            raise HTTPException(status_code=422, detail="Choose BVN or NIN.")
+        payload = {document_type: document_number, "date_of_birth": date_of_birth}
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.base_url}/v3/lookup/mashup", json=payload, headers=self._get_headers())
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=503, detail="We could not reach the identity service. Please try again.") from exc
+        finally:
+            payload[document_type] = ""
+            payload["date_of_birth"] = ""
+            document_number = ""
+            date_of_birth = ""
+        if response.status_code >= 400:
+            # Never pass through provider details: some errors echo request data.
+            raise HTTPException(status_code=422, detail="Those details could not be verified. Check them and try again.")
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="We could not read the verification result. Please try again.") from exc
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=502, detail="We could not read the verification result. Please try again.")
+        return result.get("data") or result
+
     async def lookup_credit_history(
         self,
         bvn: str,
@@ -32,12 +60,11 @@ class MonoService:
             raise HTTPException(status_code=500, detail="MONO_SECRET_KEY is not configured.")
 
         url = f"{self.base_url}/v3/lookup/credit-history/{provider}"
-        payload = {
-            "bvn": bvn,
-            "reason": reason or "Tenant Credit Assessment"
-        }
+        # Mono's credit-history lookup needs only the customer's BVN. Consent
+        # is collected by TenTrust before this server-side request is made.
+        payload = {"bvn": bvn}
 
-        logger.info(f"Calling Mono credit history lookup for BVN: {bvn[:4]}****{bvn[-3:]} via provider: {provider}")
+        logger.info("Calling Mono credit history lookup.")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
@@ -145,6 +172,24 @@ class MonoService:
                 return response.json()
             except httpx.RequestError as exc:
                 raise HTTPException(status_code=503, detail=f"Unable to reach Mono service: {str(exc)}")
+
+    async def identity_from_connect_code(self, code: str) -> Dict[str, Optional[str]]:
+        """Exchange a one-time Connect code and return only identity fields needed by screening."""
+        auth_result = await self.exchange_auth_code(code)
+        account_id = auth_result.get("id") or (auth_result.get("account") or {}).get("_id")
+        if not account_id:
+            raise HTTPException(status_code=502, detail="Mono did not return a linked account ID.")
+
+        response = await self.get_account_identity(str(account_id))
+        if response.get("status") not in (True, "success", "successful"):
+            raise HTTPException(status_code=424, detail="Mono did not complete the linked-account identity lookup.")
+        data = response.get("data") if isinstance(response.get("data"), dict) else response
+        full_name = data.get("full_name") or data.get("fullName")
+        bvn = data.get("bvn")
+        return {
+            "full_name": str(full_name).strip() if full_name else None,
+            "bvn": str(bvn).strip() if bvn else None,
+        }
 
 
 mono_service = MonoService()

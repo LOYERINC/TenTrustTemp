@@ -17,6 +17,10 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SCREENING_NOTIFICATION_FROM_EMAIL
+        sync: false
       - key: FLW_SECRET_KEY
         sync: false
       - key: FLW_WEBHOOK_SECRET
@@ -37,6 +41,8 @@ services:
         value: https://api.withmono.com
       - key: MONO_WEBHOOK_SECRET
         sync: false
+      - key: MONO_IDENTITY_CHECKS_ENABLED
+        value: "false"
       - key: MONO_CREDIT_CHECKS_ENABLED
         value: "false"
       - key: PREMBLY_SECRET_KEY

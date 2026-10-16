@@ -65,6 +65,18 @@ class CompositeScoreTest(unittest.TestCase):
         self.assertGreaterEqual(result["score"], 1)
         self.assertLessEqual(result["score"], 100)
 
+    def test_recommendation_requests_more_information_when_confidence_is_low(self):
+        result = calculate_readiness_score(250_000, 1_000_000)
+        self.assertEqual(result["recommendation_label"], "More details needed")
+        self.assertIn("enough information", result["recommendation"])
+
+    def test_recommendation_never_auto_approves_or_rejects(self):
+        positive = calculate_readiness_score(250_000, 1_000_000, 12, 12, True, True)
+        concern = calculate_readiness_score(900_000, 1_000_000, 0, 12, True, True)
+        self.assertEqual(positive["recommendation_label"], "Good details")
+        self.assertEqual(concern["recommendation_label"], "Review these details")
+        self.assertIn("closer look", concern["recommendation"])
+
 
 if __name__ == "__main__":
     unittest.main()

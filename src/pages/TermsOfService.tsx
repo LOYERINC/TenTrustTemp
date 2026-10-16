@@ -35,6 +35,7 @@ export default function TermsOfService() {
           </div>
           <h1 className="text-4xl font-heading font-black text-[#0c2340] tracking-tight">Terms of Service</h1>
           <p className="text-slate-500 mt-2 text-sm">Last updated: September 2026</p>
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-700">In short: use TenTrust to check a home request, get the tenant’s yes first, and keep their details private. The rules below explain this in full.</p>
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-8 sm:p-12 space-y-8 text-slate-700 leading-relaxed">

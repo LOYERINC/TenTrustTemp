@@ -26,7 +26,7 @@ class FlutterwaveVerificationTests(unittest.IsolatedAsyncioTestCase):
             "data": {"status": "successful", "tx_ref": "tt_example", "amount": 7000, "currency": "NGN"},
         })
         client = FakeClient(response)
-        with patch.object(screenings.settings, "FLW_SECRET_KEY", "test-secret"), patch.object(screenings.httpx, "AsyncClient", return_value=client):
+        with patch.object(screenings.settings, "FLW_SECRET_KEY", "test-secret"), patch.object(screenings, "get_http_client", return_value=client):
             transaction = await screenings._verify_payment({"provider": "flutterwave"}, "tt_example")
 
         self.assertEqual(transaction["provider"], "flutterwave")
@@ -44,7 +44,7 @@ class FlutterwaveVerificationTests(unittest.IsolatedAsyncioTestCase):
             "data": {"status": "failed", "tx_ref": "tt_example", "amount": 7000, "currency": "NGN"},
         })
         client = FakeClient(response)
-        with patch.object(screenings.settings, "FLW_SECRET_KEY", "test-secret"), patch.object(screenings.httpx, "AsyncClient", return_value=client):
+        with patch.object(screenings.settings, "FLW_SECRET_KEY", "test-secret"), patch.object(screenings, "get_http_client", return_value=client):
             transaction = await screenings._verify_payment({"provider": "flutterwave"}, "tt_example")
 
         self.assertEqual(transaction["status"], "failed")

@@ -19,9 +19,12 @@ create table if not exists public.screening_requests (
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'pending', 'paid', 'failed')),
   score jsonb,
   check_status jsonb not null default '{}'::jsonb,
+  credit_report jsonb,
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );
+
+alter table public.screening_requests add column if not exists credit_report jsonb;
 
 create table if not exists public.screening_payments (
   id uuid primary key default gen_random_uuid(),

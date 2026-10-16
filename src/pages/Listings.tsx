@@ -54,10 +54,10 @@ export default function Listings() {
           </Link>
           <div className="flex items-center gap-4">
             <button onClick={handleListPropertyClick} className="hidden sm:flex text-sm font-bold items-center gap-2 text-brand-700 bg-brand-50 hover:bg-brand-100 hover:text-brand-800 px-4 py-2 rounded-full transition-colors">
-              <Plus className="w-4 h-4" /> List Your Property
+              <Plus className="w-4 h-4" /> Add a home
             </button>
             {user ? (
-              <Link to={user.role === 'landlord' ? "/dashboard" : "/tenant"} className="text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 px-5 py-2 rounded-full transition-colors">Go to Dashboard</Link>
+              <Link to={user.role === 'landlord' ? "/dashboard" : "/tenant"} className="text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 px-5 py-2 rounded-full transition-colors">My account</Link>
             ) : (
               <Link to="/auth" className="text-sm font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 px-5 py-2 rounded-full bg-slate-50 transition-colors">Sign In / Register</Link>
             )}
@@ -68,8 +68,8 @@ export default function Listings() {
       <main className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
           <div>
-            <h1 className="text-3xl font-heading font-bold text-slate-900">Discover Trusted Properties</h1>
-            <p className="text-slate-600 mt-2">Find places curated by verified landlords.</p>
+            <h1 className="text-3xl font-heading font-bold text-slate-900">Find a home</h1>
+            <p className="text-slate-600 mt-2">Browse homes shared by landlords.</p>
           </div>
           <div className="flex bg-white shadow-sm border border-slate-200 rounded-full p-1">
             {['All', 'Rent', 'Shortlet', 'Sale'].map(tab => (
@@ -93,7 +93,7 @@ export default function Listings() {
                   {property.type}
                 </div>
                 <div className="absolute top-4 right-4 bg-brand-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" /> TenTrust Verified
+                  <ShieldCheck className="w-3.5 h-3.5" /> Checked by TenTrust
                 </div>
               </div>
               <div className="p-6">
@@ -103,10 +103,10 @@ export default function Listings() {
                 </p>
                 <div className="flex justify-between items-end">
                   <div>
-                    <p className="text-xs text-slate-500 font-medium mb-0.5">{property.type === 'Rent' ? 'Per Year' : property.type === 'Shortlet' ? 'Per Night' : 'Asking Price'}</p>
+                    <p className="text-xs text-slate-500 font-medium mb-0.5">{property.type === 'Rent' ? 'Each year' : property.type === 'Shortlet' ? 'Each night' : 'Price'}</p>
                     <p className="font-heading font-bold text-brand-600 text-xl">₦{Number(property.rentAmount || 0).toLocaleString()}</p>
                   </div>
-                  <button className="text-sm font-bold text-white bg-brand-600 px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors">Apply / Rent</button>
+                  <button className="text-sm font-bold text-white bg-brand-600 px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors">View home</button>
                 </div>
               </div>
             </Link>

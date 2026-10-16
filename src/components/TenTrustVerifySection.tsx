@@ -8,12 +8,12 @@ export default function TenTrustVerifySection() {
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold uppercase tracking-wider text-blue-800">
           <ShieldCheck className="h-4 w-4" /> Tenant screening
         </div>
-        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">Run a tenant check with a clear, explainable score</h2>
-        <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">Landlords choose a screening package, enter tenant details, and pay securely. Tenants can provide information and consent themselves through a private link.</p>
+        <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 md:text-4xl">Check a tenant before you rent out your home</h2>
+        <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">Pick a plan and pay. Then send your tenant a private link. They can add their details and give consent there.</p>
         <Link to="/auth" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-blue-900">
-          Sign in to start a screening <ArrowRight className="h-4 w-4" />
+          Sign in to start a check <ArrowRight className="h-4 w-4" />
         </Link>
-        <p className="mt-4 text-xs text-slate-500">Readiness scores are advisory and do not automatically approve or reject a tenancy application.</p>
+        <p className="mt-4 text-xs text-slate-500">The score can help you review an application. It does not make the choice for you.</p>
       </div>
     </section>
   );

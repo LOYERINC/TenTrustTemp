@@ -1,23 +1,21 @@
-@import "@fontsource-variable/oswald";
-@import "@fontsource-variable/dm-sans";
-@import "@fontsource/dm-serif-display";
+@import "./styles/tokens.css";
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "DM Sans Variable", "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-heading: "DM Serif Display", Georgia, serif;
-  --font-label: "Oswald Variable", "Oswald", ui-sans-serif, system-ui, sans-serif;
-  --color-brand-50: #eef6ff;
-  --color-brand-100: #dcecff;
-  --color-brand-200: #bbd9ff;
-  --color-brand-300: #8bbcff;
-  --color-brand-400: #5597f5;
-  --color-brand-500: #3274dc;
-  --color-brand-600: #245dc4;
-  --color-brand-700: #204b9c;
-  --color-brand-800: #1d3d78;
-  --color-brand-900: #19345f;
-  --color-brand-950: #101f3c;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-display);
+  --font-label: var(--font-display);
+  --color-brand-50: #F2F8FC;
+  --color-brand-100: #DCEEF8;
+  --color-brand-200: #b9ddef;
+  --color-brand-300: #8bc7e6;
+  --color-brand-400: #5aadd9;
+  --color-brand-500: #2E9BDB;
+  --color-brand-600: #1280C4;
+  --color-brand-700: #0E6BA8;
+  --color-brand-800: #0A2540;
+  --color-brand-900: #0A2540;
+  --color-brand-950: #071A2E;
 }
 
 html {

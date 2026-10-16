@@ -35,6 +35,7 @@ export default function PrivacyPolicy() {
           </div>
           <h1 className="text-4xl font-heading font-black text-[#0c2340] tracking-tight">Privacy Policy</h1>
           <p className="text-slate-500 mt-2 text-sm">Last updated: September 2026</p>
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-700">In short: we use your details to run the checks you ask for, keep a record of the result, and protect your account. This page tells you what we collect and what you can ask us to change or remove.</p>
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-8 sm:p-12 space-y-8 text-slate-700 leading-relaxed">

@@ -2,32 +2,32 @@ import { Building2, CreditCard, Home, FileSpreadsheet, Landmark, Clock } from '.
 
 const upcomingFeatures = [
   {
-    title: 'Verified Listings',
-    description: 'Browse verified apartments, shortlets, and properties with escrow protection.',
+    title: 'Home listings',
+    description: 'Find homes to rent or buy.',
     icon: Home,
     tag: 'Coming Soon'
   },
   {
-    title: 'Tenant & Rent Management',
-    description: 'Automated rent collection, digital receipts, and lease renewals for landlords.',
+    title: 'Rent tools',
+    description: 'Track rent, send receipts, and renew leases.',
     icon: FileSpreadsheet,
     tag: 'Coming Soon'
   },
   {
-    title: 'Pay Government Bills',
-    description: 'Settle land use charge, tenement rates, and utility bills directly from your wallet.',
+    title: 'Pay bills',
+    description: 'Pay land and home bills from your account.',
     icon: Landmark,
     tag: 'Coming Soon'
   },
   {
-    title: 'Apply for Co-Ownership',
-    description: 'Fractional real estate co-ownership opportunities backed by trusted developers.',
+    title: 'Buy a share of a home',
+    description: 'Learn about homes you can buy with other people.',
     icon: Building2,
     tag: 'Coming Soon'
   },
   {
-    title: 'Tenant Credit Facilities',
-    description: 'Flexible rent financing and repayment structures powered by Casiec Financials.',
+    title: 'Help with rent',
+    description: 'Learn about ways to pay rent over time.',
     icon: CreditCard,
     tag: 'Coming Soon'
   }
@@ -39,13 +39,13 @@ export default function ComingSoonSection() {
       <div className="max-w-7xl mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-sm font-bold uppercase tracking-wider mb-4 shadow-sm">
-            <Clock className="w-4 h-4 text-brand-600" /> Platform Roadmap
+            <Clock className="w-4 h-4 text-brand-600" /> New tools
           </div>
           <h2 className="text-3xl sm:text-4xl font-heading font-extrabold text-slate-900 tracking-tight mb-4">
-            Coming Soon to TenTrust
+            More tools are coming
           </h2>
           <p className="text-lg text-slate-600 leading-relaxed font-medium">
-            We are progressively rolling out advanced prop-tech modules to make property management in Africa seamless.
+            We are working on more tools to help you manage homes.
           </p>
         </div>
 
@@ -70,8 +70,8 @@ export default function ComingSoonSection() {
                   <p className="text-slate-600 text-base leading-relaxed mb-6">{feat.description}</p>
                 </div>
                 <div className="pt-4 border-t border-slate-200/60 flex items-center justify-between text-sm font-semibold text-slate-400">
-                  <span>In Development</span>
-                  <span className="text-brand-600">Notify Me</span>
+                  <span>In progress</span>
+                  <span className="text-brand-600">Coming soon</span>
                 </div>
               </div>
             );

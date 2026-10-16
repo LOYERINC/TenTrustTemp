@@ -308,17 +308,18 @@ export default function TenantVerify() {
             const idRes = await fetch(`${BACKEND}/api/mono/account/${accountId}/identity`, { headers: await authenticatedHeaders() });
             identityData = await idRes.json();
             if (!idRes.ok) throw new Error(identityData?.detail?.message || 'Mono linked the account, but its identity details could not be retrieved.');
+            const identity = identityData?.data && typeof identityData.data === 'object' ? identityData.data : identityData;
 
             setConnectedAccount({
               id: accountId,
-              name: identityData?.fullName || undefined,
-              accountNumber: identityData?.accountNumber || undefined,
-              institution: identityData?.institution?.name ? {
-                name: identityData.institution.name,
-                bankCode: identityData.institution.bankCode || '',
+              name: identity?.full_name || identity?.fullName || undefined,
+              accountNumber: identity?.account_number || identity?.accountNumber || undefined,
+              institution: identity?.institution?.name ? {
+                name: identity.institution.name,
+                bankCode: identity.institution.bank_code || identity.institution.bankCode || '',
               } : undefined,
-              bvn: identityData?.bvn || undefined,
-              balance: typeof identityData?.balance === 'number' ? identityData.balance : undefined,
+              bvn: identity?.bvn || undefined,
+              balance: typeof identity?.balance === 'number' ? identity.balance : undefined,
               currency: 'NGN',
             });
             setStage('mono-connect-result');

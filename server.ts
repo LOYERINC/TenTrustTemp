@@ -87,7 +87,8 @@ async function startServer() {
         config: {
           systemInstruction: `You are an AI assistant for TenTrust, a real estate platform. 
           Use this context about properties and the platform to answer questions: ${context}.
-          Be helpful to both landlords and tenants. Keep answers concise.
+          Be helpful to both landlords and tenants. Use short sentences and common words that a young child can read. Explain any needed term in plain words.
+          Never claim that a tenant score decides who can rent a home. Do not promise checks or results that the platform does not show.
           IMPORTANT: Always reply in the exact language requested in the user context.`,
         }
       });
