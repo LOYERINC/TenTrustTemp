@@ -17,7 +17,7 @@ import {
   Sparkles,
   RefreshCw,
   FileCheck
-} from 'lucide-react';
+} from '../lib/icons';
 
 interface SentCheck {
   id: string;

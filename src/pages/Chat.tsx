@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { MessageSquare, Plus, Globe, ShieldCheck, Send, Trash2, Mic, ArrowLeft, Home } from 'lucide-react';
+import { MessageSquare, Plus, Globe, ShieldCheck, Send, Trash2, Mic, ArrowLeft, Home } from '../lib/icons';
 import ReactMarkdown from 'react-markdown';
 import { Link } from 'react-router-dom';
 
 export default function Chat() {
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
-    { role: 'ai', content: 'TenTrust is a platform connecting verified tenants and landlords in Lagos. Do you want to learn more about renting, or finding properties?' }
+    { role: 'ai', content: 'Hi! I can help with tenant checks and finding a home. What would you like to know?' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -80,7 +80,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: userMessage, 
-          context: `We are TenTrust. A platform connecting verified tenants and landlords in Lagos. Note: The user prefers language: ${language}. Please reply in ${language}.` 
+          context: `We are TenTrust. We help landlords check tenant details and help people find homes in Lagos. Use short sentences and simple words. Note: The user prefers language: ${language}. Please reply in ${language}.`
         })
       });
       
@@ -117,20 +117,20 @@ export default function Chat() {
              <ShieldCheck className="w-6 h-6 text-brand-600" />
              TenTrust
            </Link>
-           <Link to="/" title="Back to Main Site" className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors">
+          <Link to="/" title="Go home" className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors">
              <Home className="w-4 h-4" />
            </Link>
         </div>
         <div className="p-4 space-y-2">
           <Link to="/" className="w-full flex items-center justify-start gap-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors">
-            <ArrowLeft className="w-4 h-4 text-brand-600" /> Back to Main Site
+            <ArrowLeft className="w-4 h-4 text-brand-600" /> Go home
           </Link>
           <button onClick={() => setMessages([{ role: 'ai', content: 'How can I help you today?' }])} className="w-full flex items-center justify-start gap-2 bg-white border border-slate-200 shadow-xs rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700">
             <Plus className="w-4 h-4" /> New chat
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 mt-2">
-          <p className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">Recents</p>
+          <p className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">Recent chats</p>
           <div className="space-y-1">
             <button className="w-full text-left px-3 py-2 text-sm text-slate-700 bg-slate-200/50 rounded-lg flex items-center gap-2 truncate font-medium">
                <MessageSquare className="w-4 h-4 shrink-0 text-slate-500" />
@@ -143,7 +143,7 @@ export default function Chat() {
              onClick={() => setMessages([{ role: 'ai', content: 'How can I help you today?' }])}
              className="flex items-center justify-start gap-2 w-full text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
            >
-             <Trash2 className="w-4 h-4" /> Clear chat history
+             <Trash2 className="w-4 h-4" /> Clear chat
            </button>
         </div>
       </div>
@@ -154,11 +154,11 @@ export default function Chat() {
         <div className="h-16 border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 bg-white shrink-0">
           <div className="flex items-center gap-3">
             <Link to="/" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-200">
-              <ArrowLeft className="w-4 h-4 text-brand-600" /> Back to Main Site
+              <ArrowLeft className="w-4 h-4 text-brand-600" /> Go home
             </Link>
             <div className="hidden sm:flex items-center gap-2 font-heading font-bold text-lg text-slate-800">
               <ShieldCheck className="w-5 h-5 text-brand-600" />
-              TenTrust Intelligence
+              TenTrust help
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -237,14 +237,14 @@ export default function Chat() {
                     sendMessage();
                   }
                 }}
-                placeholder={`Ask anything in ${language}...`}
+                placeholder={`Type a question in ${language}...`}
                 className="w-full max-h-32 p-4 pr-24 outline-none resize-none bg-transparent text-sm text-slate-900 placeholder:text-slate-500"
                 rows={1}
              />
              <div className="absolute right-2 bottom-2 flex items-center gap-2">
                <button 
                  type="button"
-                 title="Voice Input Placeholder"
+                 title="Voice input not ready"
                  className="p-2.5 text-slate-400 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-full transition-colors shrink-0"
                >
                  <Mic className="w-4 h-4" />
@@ -258,7 +258,7 @@ export default function Chat() {
                </button>
              </div>
            </form>
-           <p className="text-center text-xs text-slate-400 mt-3 font-medium">TenTrust Intelligence can make mistakes. Verify important information.</p>
+           <p className="text-center text-xs text-slate-400 mt-3 font-medium">This help tool can make mistakes. Check important details.</p>
         </div>
       </div>
     </div>

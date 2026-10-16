@@ -1,0 +1,14 @@
+:root {
+  --blue-950:#071A2E; --blue-900:#0A2540; --blue-700:#0E6BA8; --blue-600:#1280C4; --blue-500:#2E9BDB; --blue-100:#DCEEF8; --blue-50:#F2F8FC;
+  --bg:#FBFAF7; --surface:#FFFFFF; --line:#E3EAF0;
+  --mint-500:#14B88A; --amber-500:#F5A524; --error:#D92D20;
+  --ink:#0B1B2B; --muted:#5B6B7C; --white:#FFFFFF;
+  --radius-card:16px; --radius-pill:999px;
+  --shadow-sm:0 1px 2px rgba(10,37,64,.06); --shadow-md:0 8px 24px rgba(10,37,64,.08); --shadow-lg:0 20px 48px rgba(10,37,64,.12);
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px; --space-8:32px; --space-12:48px; --space-16:64px; --space-24:96px;
+  --font-body:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-display:var(--font-body);
+  --blue-800:#0A2540; --blue-300:#9BCBE5; --sky-500:#2E9BDB; --success:#14B88A;
+  --blue-shadow:var(--shadow-md); --blue-shadow-hover:var(--shadow-lg); --blue-glow:rgb(46 155 219 / 10%); --blue-glow-strong:rgb(46 155 219 / 15%);
+  --blue-ring:rgb(220 238 248 / 20%); --blue-ring-soft:rgb(220 238 248 / 4%); --blue-border-glass:rgb(227 234 240 / 90%); --white-glass:rgb(255 255 255 / 92%);
+}

@@ -1,0 +1,57 @@
+services:
+  - type: web
+    name: tentrust-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PAYMENT_PROVIDER
+        value: flutterwave
+      - key: SUPABASE_URL
+        value: https://elsvzazxshrqzwtuappy.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SCREENING_NOTIFICATION_FROM_EMAIL
+        sync: false
+      - key: FLW_SECRET_KEY
+        sync: false
+      - key: FLW_WEBHOOK_SECRET
+        sync: false
+      - key: PAYMENT_CALLBACK_URL
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: SCREENING_PRICES_CONFIRMED
+        value: "false"
+      - key: SCREENING_CONSENT_VERSION
+        value: "2026-10-02"
+      - key: MONO_SECRET_KEY
+        sync: false
+      - key: MONO_BASE_URL
+        value: https://api.withmono.com
+      - key: MONO_WEBHOOK_SECRET
+        sync: false
+      - key: MONO_IDENTITY_CHECKS_ENABLED
+        value: "false"
+      - key: MONO_CREDIT_CHECKS_ENABLED
+        value: "false"
+      - key: PREMBLY_SECRET_KEY
+        sync: false
+      - key: PREMBLY_APP_ID
+        sync: false
+      - key: PREMBLY_BASE_URL
+        value: https://api.prembly.com
+      - key: PREMBLY_WEBHOOK_SECRET
+        sync: false
+      - key: PREMBLY_CHECKS_ENABLED
+        value: "false"

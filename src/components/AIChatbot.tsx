@@ -1,4 +1,4 @@
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare } from '../lib/icons';
 import { Link, useLocation } from 'react-router-dom';
 
 export default function AIChatbot() {

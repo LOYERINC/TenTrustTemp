@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Building, MessageSquare, TrendingUp, ArrowRight, ArrowLeft, CheckCircle2, Sparkles, X } from 'lucide-react';
+import { ShieldCheck, Building, MessageSquare, TrendingUp, ArrowRight, ArrowLeft, CheckCircle2, Sparkles, X } from '../lib/icons';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -23,43 +23,43 @@ export default function OnboardingModal({ isOpen, onClose, onNavigateTab }: Onbo
       title: "Welcome to TenTrust",
       badge: "Landlord Quick Tour (1/3)",
       icon: ShieldCheck,
-      headline: "AI-Powered Tenant Screening & Portfolio Management",
-      description: "Screen prospective tenants, eliminate tenancy defaults, and manage your properties with institutional-grade verification in just a few clicks.",
+      headline: "Check tenants and manage your homes",
+      description: "Choose a plan, ask the tenant for consent, and read the report when it is ready.",
       features: [
-        "Predict tenancy risk with 99.8% accuracy",
-        "Instant BVN, NIN, employment & credit checks",
-        "Automated WhatsApp & link screening invites"
+        "See a clear score and report",
+        "Choose the checks in your plan",
+        "Send your tenant a private link"
       ],
-      actionLabel: "Next: How to Screen Tenants",
+      actionLabel: "Next: check a tenant",
       secondaryAction: null
     },
     {
       title: "Screen Prospective Tenants",
       badge: "Verification Engine (2/3)",
       icon: MessageSquare,
-      headline: "Two flexible ways to verify in under 3 minutes",
-      description: "Choose direct entry or generate a secure WhatsApp / Web link for prospective tenants to self-verify on their phones.",
+      headline: "Choose who fills in the details",
+      description: "You can enter details, or send your tenant a private link to fill in their own details and give consent.",
       features: [
-        "Direct Screening: Enter tenant's details to get an instant Score (0–100)",
-        "WhatsApp Invite: Send a secure link directly to their phone",
-        "Select packages: Basic (₦3k), Standard (₦7k), or Premium (₦12k)"
+        "Enter details yourself, or send a link",
+        "The tenant gives consent on the private link",
+        "Pick Basic, Standard, or Premium"
       ],
-      actionLabel: "Next: AI Tools & Portfolio",
+      actionLabel: "Next: your homes",
       secondaryAction: "Try Verify Flow"
     },
     {
       title: "AI Rent Estimator & Portfolio",
       badge: "Maximize Your Yield (3/3)",
       icon: Sparkles,
-      headline: "Put your properties on auto-pilot with AI",
-      description: "List all your properties, track tenant applications, and use our AI Rent Estimator to find the optimal rental price based on current market trends.",
+      headline: "Keep your property details in one place",
+      description: "Add your homes, review applications, and get help from the TenTrust assistant.",
       features: [
-        "AI Rent Estimator: Instant rent pricing & data confidence rating",
-        "Property Portfolio: Track vacancies, rent collections, and applications",
-        "24/7 AI Assistant & WhatsApp Concierge support"
+        "Add and view your property listings",
+        "Review tenant applications",
+        "Ask the assistant a question"
       ],
-      actionLabel: "Get Started Now",
-      secondaryAction: "Explore Properties"
+      actionLabel: "Get started",
+      secondaryAction: "View homes"
     }
   ];
 
