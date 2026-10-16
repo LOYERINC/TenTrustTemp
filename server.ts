@@ -1,13 +1,54 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
+import { createServer as createViteServer, loadEnv } from "vite";
+import { createClient } from "@supabase/supabase-js";
 import { GoogleGenAI } from "@google/genai";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  const env = { ...loadEnv(process.env.NODE_ENV ?? "development", process.cwd(), ""), ...process.env };
+  const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
+  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY;
+  const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
   app.use(express.json());
+
+  // The public key can only insert because the waitlist table has insert-only RLS.
+  app.post("/api/waitlist", async (req, res) => {
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const role = typeof req.body?.role === "string" ? req.body.role : "not-specified";
+    const validRoles = new Set(["tenant", "landlord", "agent", "other", "not-specified"]);
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+
+    if (!name || name.length > 100 || !emailPattern.test(email) || email.length > 254 || !validRoles.has(role)) {
+      return res.status(400).json({ error: "Enter a valid name, email, and role." });
+    }
+
+    if (!supabase) {
+      return res.status(503).json({ error: "Waitlist storage is not configured." });
+    }
+
+    try {
+      const { error } = await supabase.from("waitlist").insert({
+        name,
+        email,
+        role,
+        submitted_at: new Date().toISOString(),
+        utm: req.body?.utm && typeof req.body.utm === "object" ? req.body.utm : {},
+      });
+      if (error?.code === "23505") return res.status(409).json({ error: "Email is already registered." });
+      if (error) throw error;
+      return res.status(201).json({ success: true });
+    } catch (error) {
+      console.error("Supabase waitlist insert failed:", error);
+      return res.status(500).json({ error: "We couldn't save your signup. Please try again." });
+    }
+  });
+
+  // Serve the standalone Coming Soon page on the main site's origin.
+  app.use("/comingsoon", express.static(path.join(process.cwd(), "comingsoon"), { extensions: ["html"] }));
 
   // API endpoints
   app.post("/api/estimate", async (req, res) => {
