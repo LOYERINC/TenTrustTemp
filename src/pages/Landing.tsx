@@ -215,7 +215,7 @@ export default function Landing() {
             <article className="tt-v2-card tt-audience-card"><span className="tt-icon-tile" aria-hidden="true"><UserRound/></span><p className="tt-eyebrow">FOR LANDLORDS</p><h3>Make informed decisions with confidence.</h3><ul>{siteConfig.benefits.landlords.map((benefit) => <li key={benefit}><CheckCircle2 aria-hidden="true"/>{benefit}</li>)}</ul><Link to="/auth?action=verify">Verify a tenant <ArrowRight size={16} aria-hidden="true"/></Link></article>
             <article className="tt-v2-card tt-audience-card"><span className="tt-icon-tile" aria-hidden="true"><Building2/></span><p className="tt-eyebrow">FOR AGENTS</p><h3>Bring clarity to every application.</h3><ul>{siteConfig.benefits.agents.map((benefit) => <li key={benefit}><CheckCircle2 aria-hidden="true"/>{benefit}</li>)}</ul><Link to="/auth?action=verify">Explore verification <ArrowRight size={16} aria-hidden="true"/></Link></article>
           </div>
-          <Link className="tt-tenant-strip" to="/comingsoon"><span><UserRound size={20} aria-hidden="true"/><strong>Tenants: build your own trust profile</strong><small>Coming soon — take your rental history with you.</small></span><ArrowRight aria-hidden="true"/></Link>
+          <a className="tt-tenant-strip" href="/comingsoon/"><span><UserRound size={20} aria-hidden="true"/><strong>Tenants: build your own trust profile</strong><small>Coming soon — take your rental history with you.</small></span><ArrowRight aria-hidden="true"/></a>
         </Container>
       </section>
 
@@ -236,7 +236,7 @@ export default function Landing() {
       <Container className="tt-v2-container">
         <div className="tt-footer-grid">
           <div><Link to="/" aria-label="TenTrust home"><Logo/></Link><p>Clearer checks. More confident renting.</p></div>
-          <div><h3>Product</h3><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a><Link to="/comingsoon">Tenant profiles</Link></div>
+          <div><h3>Product</h3><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a><a href="/comingsoon/">Coming soon</a></div>
           <div><h3>Company</h3><Link to="/auth">Log in</Link><a href={siteConfig.socials.linkedin || '#'}>LinkedIn</a><a href={siteConfig.socials.instagram || '#'}>Instagram</a></div>
           <div><h3>Legal &amp; contact</h3><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>{siteConfig.whatsapp && <a href={`https://wa.me/${siteConfig.whatsapp.replace(/\D/g, '')}`}>WhatsApp support</a>}{siteConfig.registeredAddress && <span className="tt-footer-address"><MapPin size={15} aria-hidden="true"/>{siteConfig.registeredAddress}</span>}</div>
         </div>
