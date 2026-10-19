@@ -27,6 +27,12 @@ The Netlify waitlist function also needs the public Supabase URL and anon key av
 
 All `VITE_` settings are visible in the compiled app. Only use public/publishable keys here. After changing a Netlify setting, trigger a new frontend deploy because Vite embeds these values at build time.
 
+## Vercel frontend and waitlist
+
+The Vercel project builds with `npm run build` and serves `dist`. The waitlist endpoint is the Vercel function in `api/waitlist.ts`; configure `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the Vercel project environment for every deploy context. The function accepts name, email, role, and UTM fields and inserts them into `public.waitlist` using the anon key and the table's insert-only RLS policy. The function can fall back to `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, but the server-side names are preferred. Never configure or use the service-role key for the public waitlist form.
+
+Apply `supabase/migrations/202610160001_waitlist.sql` to the same Supabase project before accepting signups. Duplicate email addresses return a friendly conflict response.
+
 ## Render FastAPI backend
 
 Set these in the Render service environment:
