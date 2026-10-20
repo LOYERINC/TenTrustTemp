@@ -2,6 +2,7 @@ services:
   - type: web
     name: tentrust-api
     runtime: python
+    plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
@@ -10,7 +11,9 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: PAYMENT_PROVIDER
-        value: flutterwave
+        value: paystack
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
       - key: SUPABASE_URL
         value: https://elsvzazxshrqzwtuappy.supabase.co
       - key: SUPABASE_ANON_KEY
