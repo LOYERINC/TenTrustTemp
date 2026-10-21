@@ -42,14 +42,13 @@ Set these in the Render service environment:
 | `ENVIRONMENT` | `production` |
 | `PORT` | Provided by Render |
 | `HOST` | `0.0.0.0` |
-| `PAYMENT_PROVIDER` | `flutterwave` |
+| `PAYMENT_PROVIDER` | `paystack` |
 | `SUPABASE_URL` | `https://elsvzazxshrqzwtuappy.supabase.co` |
 | `SUPABASE_ANON_KEY` | Supabase anon/publishable key, used to validate the signed-in user's JWT |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role/secret key; backend only |
 | `RESEND_API_KEY` | Resend API key for landlord report-ready email notifications |
 | `SCREENING_NOTIFICATION_FROM_EMAIL` | Verified sender, e.g. `TenTrust <reports@your-verified-domain.com>` |
-| `FLW_SECRET_KEY` | Flutterwave secret key for the chosen environment |
-| `FLW_WEBHOOK_SECRET` | Secret hash configured for Flutterwave webhooks |
+| `PAYSTACK_SECRET_KEY` | Paystack secret key for the chosen environment; backend only |
 | `PAYMENT_CALLBACK_URL` | `https://YOUR_NETLIFY_DOMAIN/dashboard?tab=verify-tenant` |
 | `PUBLIC_APP_URL` | `https://YOUR_NETLIFY_DOMAIN` |
 | `ALLOWED_ORIGINS` | Exact frontend origin(s), comma-separated, with no wildcard; e.g. `https://YOUR_NETLIFY_DOMAIN` |
@@ -66,17 +65,13 @@ Set these in the Render service environment:
 
 The Render blueprint declares the provider keys as unsynchronized secrets, so the owner enters them directly in Render. Do not commit a live `.env` file.
 
-### Flutterwave setup
+### Paystack setup
 
-Register this webhook in Flutterwave:
+Register this webhook in Paystack:
 
-`https://YOUR_RENDER_API_DOMAIN/api/payments/flutterwave/webhook`
+`https://YOUR_RENDER_API_DOMAIN/api/payments/paystack/webhook`
 
-Use the same webhook Secret Hash as `FLW_WEBHOOK_SECRET`. Keep test credentials in staging. Use live credentials in production; the backend rejects test Flutterwave keys for production checkout.
-
-### Optional Paystack alternative
-
-If the owner chooses Paystack instead, set `PAYMENT_PROVIDER=paystack`, then configure `PAYSTACK_SECRET_KEY` on Render and register `https://YOUR_RENDER_API_DOMAIN/api/payments/paystack/webhook`. The live backend checks that the production secret is not a test key.
+Set `PAYMENT_PROVIDER=paystack` and add `PAYSTACK_SECRET_KEY` directly in Render. Use the existing `sk_test_` key only for staging; production checkout rejects test keys and requires a live `sk_live_` key.
 
 ## AI endpoints
 
