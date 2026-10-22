@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { normalizeSupabasePublicKey } from './supabaseConfig';
 
 const env = (import.meta as any).env || {};
 const rawUrl: string | undefined = env.VITE_SUPABASE_URL;
@@ -15,15 +16,14 @@ const isValidUrl = (url?: string): boolean => {
 };
 
 const supabaseUrl = isValidUrl(rawUrl) ? rawUrl!.trim() : 'https://placeholder-project.supabase.co';
-const supabaseAnonKey = rawAnonKey && typeof rawAnonKey === 'string' && rawAnonKey.trim().length > 0 
-  ? rawAnonKey.trim() 
-  : 'placeholder-anon-key';
+const normalizedAnonKey = normalizeSupabasePublicKey(rawAnonKey);
+const supabaseAnonKey = normalizedAnonKey || 'placeholder-anon-key';
 
 export const isSupabaseConfigured = (): boolean => {
   return (
     isValidUrl(rawUrl) &&
     !rawUrl!.includes('placeholder') &&
-    Boolean(rawAnonKey && rawAnonKey.trim().length > 0 && !rawAnonKey.includes('placeholder'))
+    Boolean(normalizedAnonKey && !normalizedAnonKey.includes('placeholder'))
   );
 };
 
