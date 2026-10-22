@@ -12,10 +12,10 @@ services:
         value: production
       - key: PAYMENT_PROVIDER
         value: paystack
-      - key: PAYSTACK_SECRET_KEY
-        sync: false
+      - key: HOST
+        value: 0.0.0.0
       - key: SUPABASE_URL
-        value: https://elsvzazxshrqzwtuappy.supabase.co
+        sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -24,9 +24,7 @@ services:
         sync: false
       - key: SCREENING_NOTIFICATION_FROM_EMAIL
         sync: false
-      - key: FLW_SECRET_KEY
-        sync: false
-      - key: FLW_WEBHOOK_SECRET
+      - key: PAYSTACK_SECRET_KEY
         sync: false
       - key: PAYMENT_CALLBACK_URL
         sync: false
@@ -40,6 +38,8 @@ services:
         value: "2026-10-02"
       - key: MONO_SECRET_KEY
         sync: false
+      - key: MONO_PUBLIC_KEY
+        sync: false
       - key: MONO_BASE_URL
         value: https://api.withmono.com
       - key: MONO_WEBHOOK_SECRET
@@ -48,7 +48,15 @@ services:
         value: "false"
       - key: MONO_CREDIT_CHECKS_ENABLED
         value: "false"
+      - key: FLW_SECRET_KEY
+        sync: false
+      - key: FLW_PUBLIC_KEY
+        sync: false
+      - key: FLW_WEBHOOK_SECRET
+        sync: false
       - key: PREMBLY_SECRET_KEY
+        sync: false
+      - key: PREMBLY_PUBLIC_KEY
         sync: false
       - key: PREMBLY_APP_ID
         sync: false
