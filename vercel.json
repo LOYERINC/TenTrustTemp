@@ -12,6 +12,10 @@
     {
       "source": "/comingsoon/",
       "destination": "/comingsoon/index.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
