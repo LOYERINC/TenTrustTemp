@@ -2,6 +2,7 @@ services:
   - type: web
     name: tentrust-api
     runtime: python
+    branch: codex/public-demo
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
@@ -9,7 +10,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: demo
       - key: PAYMENT_PROVIDER
         value: paystack
       - key: HOST
@@ -27,11 +28,11 @@ services:
       - key: PAYSTACK_SECRET_KEY
         sync: false
       - key: PAYMENT_CALLBACK_URL
-        sync: false
+        value: "https://www.tentrust.com.ng/dashboard?tab=verify-tenant"
       - key: PUBLIC_APP_URL
-        sync: false
+        value: https://www.tentrust.com.ng
       - key: ALLOWED_ORIGINS
-        sync: false
+        value: "https://www.tentrust.com.ng,https://tentrust.com.ng,https://ten-trust.vercel.app"
       - key: SCREENING_PRICES_CONFIRMED
         value: "false"
       - key: SCREENING_CONSENT_VERSION
@@ -45,7 +46,7 @@ services:
       - key: MONO_WEBHOOK_SECRET
         sync: false
       - key: MONO_IDENTITY_CHECKS_ENABLED
-        value: "false"
+        value: "true"
       - key: MONO_CREDIT_CHECKS_ENABLED
         value: "false"
       - key: FLW_SECRET_KEY

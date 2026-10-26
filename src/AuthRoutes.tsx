@@ -3,14 +3,15 @@ import { matchPath, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 
 const Auth = lazy(() => import('./pages/Auth'));
+const AuthLink = lazy(() => import('./pages/AuthLink'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminDashboard = lazy(() => import('./pages/AdminDemoOperations'));
 const Listings = lazy(() => import('./pages/Listings'));
 const KYCForm = lazy(() => import('./pages/KYCForm'));
 
 export default function AuthRoutes() {
   const { pathname } = useLocation();
-  const Page = pathname === '/auth' ? Auth
+  const Page = ['/auth/reset-password', '/auth/callback'].includes(pathname) ? AuthLink : pathname === '/auth' ? Auth
     : pathname === '/dashboard' ? Dashboard
     : pathname === '/admin' ? AdminDashboard
     : pathname === '/listings' ? Listings

@@ -9,7 +9,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 const Landing = lazy(() => import('./pages/Landing'));
 const AuthRoutes = lazy(() => import('./AuthRoutes'));
 const Chat = lazy(() => import('./pages/Chat'));
-const TenantVerificationPortal = lazy(() => import('./pages/TenantVerificationPortal'));
+const TenantVerificationPortal = lazy(() => import('./pages/SandboxTenantPortal'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const Pricing = lazy(() => import('./pages/Pricing'));
@@ -17,6 +17,7 @@ const Pricing = lazy(() => import('./pages/Pricing'));
 export default function App() {
   return (
     <BrowserRouter>
+      {import.meta.env.VITE_DEMO_MODE === 'true' && <aside role="note" style={{background:'#fff4d6',color:'#5c3a00',borderBottom:'1px solid #e6c67c',padding:'12px 20px',textAlign:'center',fontSize:14,lineHeight:1.5}}><strong>TenTrust Sandbox demo</strong> · Paystack test payments · Mono sample identity data. Use test details only. No live verification or real payment.</aside>}
       <Suspense fallback={<main className="grid min-h-[50vh] place-items-center px-4 text-sm font-semibold text-slate-600" role="status">Loading TenTrust…</main>}>
         <Routes>
           <Route path="/" element={<Landing />} />

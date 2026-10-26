@@ -112,7 +112,7 @@ def _package_availability(package_id: str) -> tuple[bool, list[str]]:
     missing = []
     if package_id == "identity" and (not settings.MONO_SECRET_KEY or not settings.MONO_IDENTITY_CHECKS_ENABLED):
         missing.append("identity verification is not configured")
-    if package_id in ("standard", "premium", "founding") and (not settings.MONO_SECRET_KEY or not settings.MONO_CREDIT_CHECKS_ENABLED):
+    if package_id in ("standard", "premium", "founding"):
         missing.append("Credit check is not set up yet")
     provider = "paystack" if package_id == "identity" else settings.PAYMENT_PROVIDER.strip().lower()
     if provider == "paystack" and not settings.PAYSTACK_SECRET_KEY:
@@ -132,6 +132,13 @@ def _package_availability(package_id: str) -> tuple[bool, list[str]]:
         missing.append("Paystack test credentials cannot be used in production")
     if settings.ENVIRONMENT == "production" and provider == "flutterwave" and "_TEST-" in settings.FLW_SECRET_KEY:
         missing.append("Flutterwave test credentials cannot be used in production")
+    if settings.ENVIRONMENT == "demo":
+        if package_id != "identity":
+            missing.append("The public Sandbox demo supports the Identity package")
+        if provider != "paystack" or not settings.PAYSTACK_SECRET_KEY.startswith("sk_test_"):
+            missing.append("Sandbox checkout requires Paystack test credentials")
+        if not settings.MONO_SECRET_KEY.startswith("test_sk_"):
+            missing.append("Sandbox identity checks require Mono test credentials")
     return not missing, missing
 
 
@@ -241,6 +248,10 @@ async def _process_screening(
     consent_method: str,
 ) -> Dict[str, Any]:
     package_id = row["package_id"]
+    if package_id == "identity":
+        raise HTTPException(status_code=400, detail="Complete identity verification using the tenant consent and identity form.")
+    if settings.ENVIRONMENT == "demo":
+        raise HTTPException(status_code=503, detail="This Sandbox release supports the sample Identity check only.")
     monthly_rent = payload.monthly_rent or row.get("monthly_rent")
     if not monthly_rent:
         raise HTTPException(status_code=422, detail="Monthly rent is required to calculate the readiness score.")
@@ -328,43 +339,16 @@ async def _process_screening(
         "status": "complete",
         "completed_at": datetime.now(timezone.utc).isoformat(),
     })
-    await _notify_landlord_report_ready(row)
     return updated[0]
 
 
-async def _notify_landlord_report_ready(row: Dict[str, Any]) -> None:
-    """Send a minimal email notice; the report itself remains behind landlord authentication."""
-    email = row.get("landlord_email")
-    if not email:
-        logger.info("Report-ready email skipped because this landlord has no email address.")
-        return
-    if not settings.RESEND_API_KEY or not settings.SCREENING_NOTIFICATION_FROM_EMAIL:
-        logger.info("Report-ready email is not configured; landlord can view the report in the dashboard.")
-        return
-
-    report_url = f"{settings.PUBLIC_APP_URL.rstrip('/')}/dashboard?tab=verify-tenant&report={row['id']}"
-    message = {
-        "from": settings.SCREENING_NOTIFICATION_FROM_EMAIL,
-        "to": [email],
-        "subject": "Your TenTrust identity report is ready",
-        "text": (
-            "A tenant identity report is ready in your TenTrust dashboard. "
-            "Sign in to review the verification result and name match.\n\n"
-            f"Open your report: {report_url}\n\n"
-            "The report is advisory and does not make an automatic rental decision."
-        ),
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                "https://api.resend.com/emails",
-                json=message,
-                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-            )
-        if response.status_code >= 400:
-            logger.warning("Report-ready email delivery failed with HTTP %s.", response.status_code)
-    except httpx.RequestError as exc:
-        logger.warning("Report-ready email delivery could not reach the email provider: %s", exc)
+def payment_mode(provider: str) -> str:
+    key = settings.PAYSTACK_SECRET_KEY if provider == 'paystack' else settings.FLW_SECRET_KEY
+    if provider == 'paystack':
+        return 'test' if key.startswith('sk_test_') else 'live' if key.startswith('sk_live_') else 'unknown'
+    if provider == 'flutterwave':
+        return 'test' if key.startswith('FLWSECK_TEST-') else 'live' if key.startswith('FLWSECK-') else 'unknown'
+    return 'unknown'
 
 
 @router.get("/api/screenings/packages")
@@ -515,6 +499,7 @@ async def initialize_checkout(screening_id: str, authorization: Optional[str] = 
         "landlord_id": user_id,
         "package_id": row["package_id"],
         "provider": provider,
+        "mode": payment_mode(provider),
         "reference": reference,
         "amount_kobo": amount_kobo,
         "currency": "NGN",
@@ -716,16 +701,19 @@ async def capture_public_screening_consent(token: str, payload: TenantConsentCap
     if not row or row["status"] == "complete":
         raise HTTPException(status_code=404, detail="This tenant link has already been used or is unavailable.")
     existing = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
-    if not existing:
-        await store.insert("screening_consents", {
+    consent_data = {
             "screening_id": row["id"],
             "landlord_id": row["landlord_id"],
             "method": "tenant_direct_consent",
             "consented_as": row["tenant_name"],
-            "purpose": "Identity verification: compare the tenant-provided ID and date of birth; landlord sees verification result and name-match status only.",
+            "purpose": "Identity verification: compare the tenant-provided BVN, NIN and date of birth; landlord sees verification result and name-match status only.",
             "version": settings.IDENTITY_CONSENT_VERSION,
             "collected_at": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+    if not existing:
+        await store.insert("screening_consents", consent_data)
+    elif existing.get("version") != settings.IDENTITY_CONSENT_VERSION:
+        await store.patch("screening_consents", {"id": f"eq.{existing['id']}"}, consent_data)
     return {"consent_recorded": True}
 
 
@@ -738,11 +726,20 @@ async def complete_public_identity(token: str, request: Request):
         raise HTTPException(status_code=400, detail="Enter your ID details and try again.") from exc
     document_type = body.get("document_type") if isinstance(body, dict) else None
     document_number = body.get("document_number") if isinstance(body, dict) else None
+    bvn = body.get("bvn") if isinstance(body, dict) else None
+    nin = body.get("nin") if isinstance(body, dict) else None
+    if document_type == "bvn" and bvn is None:
+        bvn = document_number
+    elif document_type == "nin" and nin is None:
+        nin = document_number
     date_of_birth = body.get("date_of_birth") if isinstance(body, dict) else None
     if document_type not in ("bvn", "nin"):
         raise HTTPException(status_code=422, detail="Choose BVN or NIN.")
     if not isinstance(document_number, str) or len(document_number) != 11 or not document_number.isdigit():
         raise HTTPException(status_code=422, detail=f"That {document_type.upper()} doesn't look right. Check the 11 digits and try again.")
+    for kind, number in (("BVN", bvn), ("NIN", nin)):
+        if not isinstance(number, str) or len(number) != 11 or not number.isascii() or not number.isdigit():
+            raise HTTPException(status_code=422, detail=f"Enter your 11-digit {kind}. Both BVN and NIN are required for this identity check.")
     if not isinstance(date_of_birth, str):
         raise HTTPException(status_code=422, detail="Enter a valid date of birth.")
     if not settings.MONO_SECRET_KEY or not settings.MONO_IDENTITY_CHECKS_ENABLED:
@@ -761,6 +758,8 @@ async def complete_public_identity(token: str, request: Request):
     consent = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
     if not consent:
         raise HTTPException(status_code=403, detail="Please give consent before continuing.")
+    if consent.get("version") != settings.IDENTITY_CONSENT_VERSION:
+        raise HTTPException(status_code=403, detail="Please refresh this page and review the updated consent for checking both BVN and NIN.")
     try:
         datetime.strptime(date_of_birth, "%Y-%m-%d")
     except ValueError as exc:
@@ -770,7 +769,7 @@ async def complete_public_identity(token: str, request: Request):
         raise HTTPException(status_code=410, detail="This link has already been used or is no longer available.")
     last_four = document_number[-4:]
     try:
-        result = await mono_service.verify_identity(document_type=document_type, document_number=document_number, date_of_birth=date_of_birth)
+        result = await mono_service.verify_identity(bvn=bvn, nin=nin, date_of_birth=date_of_birth)
     except Exception:
         await store.patch("screening_tenant_tokens", {"id": f"eq.{token_row['id']}"}, {"claimed_at": None})
         raise
@@ -778,8 +777,12 @@ async def complete_public_identity(token: str, request: Request):
         # Keep the submitted identifier only in request memory; never persist or log it.
         if isinstance(body, dict):
             body["document_number"] = ""
+            body["bvn"] = ""
+            body["nin"] = ""
             body["date_of_birth"] = ""
         document_number = ""
+        bvn = ""
+        nin = ""
         date_of_birth = ""
     personal_data = result.get("personal_information") or result.get("identity") or {}
     personal = personal_data if isinstance(personal_data, dict) else {}
@@ -805,10 +808,12 @@ async def complete_public_identity(token: str, request: Request):
         "status": "complete" if verified_name else "incomplete", "name_match": name_match if verified_name else None,
         "masked_document": f"{document_type.upper()} •••• {last_four}",
         "identity_verified_at": now, "completed_at": now, "report_id": report_id,
-        "check_status": {"identity": "verified" if verified_name else "could_not_verify"},
+        "check_status": {
+            "identity": ("sandbox_verified" if settings.ENVIRONMENT == "demo" else "verified") if verified_name else "could_not_verify",
+            "environment": "sandbox" if settings.ENVIRONMENT == "demo" else settings.ENVIRONMENT,
+        },
     })
     await store.patch("screening_tenant_tokens", {"id": f"eq.{token_row['id']}"}, {"consumed_at": now, "claimed_at": None})
-    await _notify_landlord_report_ready(row)
     return {"status": "complete" if verified_name else "incomplete", "name_match": name_match if verified_name else None, "identity_verified_at": now, "report_id": report_id}
 
 

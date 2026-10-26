@@ -25,14 +25,8 @@ router = APIRouter(prefix="/api/mono", tags=["Mono Identity & Credit Integration
 )
 async def get_credit_history(payload: MonoCreditHistoryRequest, authorization: Optional[str] = Header(default=None)):
     await authenticated_user_id(authorization)
-    if not settings.MONO_CREDIT_CHECKS_ENABLED:
-        raise HTTPException(status_code=503, detail="Mono credit-history lookup is not enabled for this environment.")
-    result = await mono_service.lookup_credit_history(
-        bvn=payload.bvn,
-        provider=payload.provider or "all",
-        reason=payload.reason
-    )
-    return result
+    # This adapter remains disabled even if a stale deployment flag is true.
+    raise HTTPException(status_code=503, detail="Credit checks are not available in this release.")
 
 
 @router.post(
@@ -42,6 +36,8 @@ async def get_credit_history(payload: MonoCreditHistoryRequest, authorization: O
 )
 async def exchange_token(payload: MonoAuthCodeRequest, authorization: Optional[str] = Header(default=None)):
     await authenticated_user_id(authorization)
+    if settings.ENVIRONMENT == "demo":
+        raise HTTPException(status_code=503, detail="The Sandbox demo supports the sample identity check only.")
     if not settings.MONO_IDENTITY_CHECKS_ENABLED:
         raise HTTPException(status_code=503, detail="Mono identity checks are not enabled for this environment.")
     result = await mono_service.exchange_auth_code(payload.code)
@@ -55,6 +51,8 @@ async def exchange_token(payload: MonoAuthCodeRequest, authorization: Optional[s
 )
 async def get_account_identity(account_id: str, authorization: Optional[str] = Header(default=None)):
     await authenticated_user_id(authorization)
+    if settings.ENVIRONMENT == "demo":
+        raise HTTPException(status_code=503, detail="The Sandbox demo supports the sample identity check only.")
     if not settings.MONO_IDENTITY_CHECKS_ENABLED:
         raise HTTPException(status_code=503, detail="Mono identity checks are not enabled for this environment.")
     result = await mono_service.get_account_identity(account_id)

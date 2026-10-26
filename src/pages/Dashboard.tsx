@@ -24,7 +24,7 @@ export default function Dashboard() {
   const [loading,setLoading]=useState(true); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
   const [filter,setFilter]=useState<Filter>('All'); const [createOpen,setCreateOpen]=useState(false); const [tenantLink,setTenantLink]=useState(''); const [paymentConfirming,setPaymentConfirming]=useState(false); const [tierStep,setTierStep]=useState(true);
   const [report,setReport]=useState<ReportRow|null>(null); const [fieldError,setFieldError]=useState(''); const [copied,setCopied]=useState(false);
-  const [searchQuery,setSearchQuery]=useState(''); const [menuOpen,setMenuOpen]=useState(false); const [avatarOpen,setAvatarOpen]=useState(false); const [selectedTierId,setSelectedTierId]=useState('basic');
+  const [searchQuery,setSearchQuery]=useState(''); const [menuOpen,setMenuOpen]=useState(false); const [avatarOpen,setAvatarOpen]=useState(false); const [selectedTierId,setSelectedTierId]=useState(import.meta.env.VITE_DEMO_MODE === 'true' ? 'identity' : 'basic');
   const hasCompletedInitialLoad=useRef(false);
   const [sampleOpen,setSampleOpen]=useState(false); const sampleTriggerRef=useRef<HTMLButtonElement>(null); const sampleCloseRef=useRef<HTMLButtonElement>(null);
 
