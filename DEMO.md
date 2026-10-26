@@ -6,7 +6,7 @@ Authenticated landlords create an Identity screening, complete a real Paystack *
 
 ## Hosting configuration
 
-Frontend: `www.tentrust.com.ng` on Vercel project `ten-trust`. Backend: `https://tentrust-api.onrender.com`, Render service `srv-dbcja45g1s2s73dfeav0`. Both releases must use this branch together.
+Frontend: `www.tentrust.com.ng` on Vercel project `ten-trust`. Backend: `https://tentrust-api.onrender.com`, Render service `srv-dbcja45g1s2s73dfeav0`. Both releases must use this branch together. `render.yaml` declares the non-secret demo settings and the backend release branch. The existing Blueprint-linked branch must receive that file for automatic sync; an automatic sync still needs to be observed in Render before calling the backend ready.
 
 Render must use `ENVIRONMENT=demo`, `MONO_IDENTITY_CHECKS_ENABLED=true`, `MONO_CREDIT_CHECKS_ENABLED=false`, existing Paystack `sk_test_` credentials, and existing Mono `test_sk_` credentials. Keep all Supabase/signing secrets server-side. Set `PUBLIC_APP_URL=https://www.tentrust.com.ng` and `PAYMENT_CALLBACK_URL=https://www.tentrust.com.ng/dashboard?tab=verify-tenant`. Preserve exact approved CORS origins; include the public www domain. Production mode continues to reject Paystack test credentials.
 
@@ -31,4 +31,4 @@ The broader `/api/v1` tenant verification module, live provider onboarding, self
 
 ## Rollback
 
-Restore the previous Vercel production deployment and Render source branch `codex/readable-blue-brand-api-setup` with `ENVIRONMENT=production` and identity checks disabled. Keep real payment records; never erase records to hide a deployment problem. Restore public frontend/backend together.
+Revert the demo Blueprint changes in its linked branch first, so automatic sync cannot reapply demo settings. Restore the previous Vercel production deployment (`d1fa7b6`) and the previous successful Render deployment (`21df79c`) with `ENVIRONMENT=production` and identity checks disabled. A Git backup branch, `codex/pre-demo-render-20261026`, preserves the previous Render source. Keep real payment records; never erase records to hide a deployment problem. Restore public frontend/backend together.
