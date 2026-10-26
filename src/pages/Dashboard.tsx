@@ -7,7 +7,6 @@ import SampleReportCard from '../components/SampleReportCard';
 import { siteConfig } from '../config';
 import { formatScreeningError, screeningApi, ScreeningPackage } from '../lib/screeningApi';
 import { redirectToPaymentCheckout } from '../lib/paymentCheckout';
-import { tiers } from '../config/pricing.js';
 import { formatNaira, toTitleCase } from '../utils/format.js';
 
 interface RequestRow {
@@ -24,7 +23,8 @@ export default function Dashboard() {
   const [loading,setLoading]=useState(true); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
   const [filter,setFilter]=useState<Filter>('All'); const [createOpen,setCreateOpen]=useState(false); const [tenantLink,setTenantLink]=useState(''); const [paymentConfirming,setPaymentConfirming]=useState(false); const [tierStep,setTierStep]=useState(true);
   const [report,setReport]=useState<ReportRow|null>(null); const [fieldError,setFieldError]=useState(''); const [copied,setCopied]=useState(false);
-  const [searchQuery,setSearchQuery]=useState(''); const [menuOpen,setMenuOpen]=useState(false); const [avatarOpen,setAvatarOpen]=useState(false); const [selectedTierId,setSelectedTierId]=useState(import.meta.env.VITE_DEMO_MODE === 'true' ? 'identity' : 'basic');
+  const [searchQuery,setSearchQuery]=useState(''); const [menuOpen,setMenuOpen]=useState(false); const [avatarOpen,setAvatarOpen]=useState(false); const [selectedTierId,setSelectedTierId]=useState('identity');
+  const tiers=useMemo(()=>packageCatalog.map(item=>({...item, recommended:false, includes:item.checks.map(check=>check==='identity'?'Consent-based BVN, NIN and date of birth check':check.replaceAll('_',' '))})),[packageCatalog]);
   const hasCompletedInitialLoad=useRef(false);
   const [sampleOpen,setSampleOpen]=useState(false); const sampleTriggerRef=useRef<HTMLButtonElement>(null); const sampleCloseRef=useRef<HTMLButtonElement>(null);
 
@@ -104,7 +104,8 @@ export default function Dashboard() {
     if(!nigeriaPhone.test(phone)){setFieldError('Enter a valid Nigerian mobile number, such as 08012345678.');return;}
     setBusy(true);
     try{
-      const selectedTier=tiers.find(tier=>tier.id===selectedTierId)||tiers[0];
+      const selectedTier=tiers.find(tier=>tier.id===selectedTierId);
+      if(!selectedTier?.enabled){setFieldError('Choose an available verification package.');setBusy(false);return;}
       // The tier and displayed quote travel with the request; checkout amount remains server-authoritative.
       const created=await screeningApi<{screening_id:string}>('/api/screenings',{method:'POST',body:JSON.stringify({package_id:selectedTier.id,client_price_quote:selectedTier.price,intake_mode:'tenant_link',tenant_name:name,tenant_phone:phone,property_title:String(form.get('property_title')||'Rental application').trim()||'Rental application',monthly_rent:form.get('rent_amount')?Number(form.get('rent_amount')):null})});
       const checkout=await screeningApi<{authorization_url:string}>(`/api/screenings/${encodeURIComponent(created.screening_id)}/checkout`,{method:'POST'});
@@ -124,9 +125,9 @@ export default function Dashboard() {
   const shareLink=async()=>{if(!report)return;setBusy(true);try{const data=await screeningApi<{tenant_url:string}>(`/api/screenings/${encodeURIComponent(report.id)}/tenant-link`,{method:'POST'});setReport(null);setTenantLink(data.tenant_url);}catch(e){setError(formatScreeningError(e));}finally{setBusy(false);}};
   const initials=`${user?.firstName?.[0]||'T'}${user?.lastName?.[0]||''}`.toUpperCase();
   const whatsappNumber=siteConfig.whatsapp.replace(/\D/g,'');
-  const requestButton=(tierId='basic')=>{setError('');setFieldError('');setSelectedTierId(tierId);setTierStep(true);setCreateOpen(true);};
+  const requestButton=(tierId='identity')=>{if(!packageCatalog.some(item=>item.enabled)){setError('No verification package is available yet. Wait for the service to load and refresh.');return;}setError('');setFieldError('');setSelectedTierId(tierId);setTierStep(true);setCreateOpen(true);};
   const tierLabel=(id?:string)=>tiers.find(tier=>tier.id===id)?.name||'Identity';
-  const selectedTier=tiers.find(tier=>tier.id===selectedTierId)||tiers[0];
+  const selectedTier=tiers.find(tier=>tier.id===selectedTierId)||tiers.find(tier=>tier.enabled)||{id:'identity',name:'Identity verification',price:0};
   const selectedPackage=packageCatalog.find(item=>item.id===selectedTier.id);
   const statusClass=(status:string)=>status==='complete'?'tt-status-success':['failed','incomplete','declined','expired'].includes(status)?'tt-status-failed':'tt-status-pending';
 
@@ -149,7 +150,7 @@ export default function Dashboard() {
 
     {createOpen&&<div className="tt-modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setCreateOpen(false);}}><Card className="tt-modal dashboard-flow-modal" role="dialog" aria-modal="true" aria-labelledby="new-verification-title"><div className="tt-modal-head"><div><p className="dashboard-eyebrow">STEP {tierStep?'1':'2'} OF 2</p><h2 id="new-verification-title">{tierStep?'Choose a verification tier':'Tenant details'}</h2><p className="tt-muted" style={{margin:0}}>{tierStep?'Select the level of detail you need.':'The tenant completes the check on their phone.'}</p></div><button className="tt-close" onClick={()=>setCreateOpen(false)} aria-label="Close"><X size={21}/></button></div>
       {fieldError&&<Toast>{fieldError}</Toast>}{error&&<Toast>{error}</Toast>}
-      {tierStep?<><fieldset className="dashboard-tier-options"><legend className="sr-only">Choose a verification tier</legend>{tiers.map(tier=><label key={tier.id} className={`dashboard-tier-option${selectedTier.id===tier.id?' is-selected':''}`}><input type="radio" name="verification-tier" value={tier.id} checked={selectedTier.id===tier.id} onChange={()=>setSelectedTierId(tier.id)}/><span className="dashboard-tier-option-content"><span className="dashboard-tier-option-head"><strong>{tier.name}</strong>{tier.recommended&&<span>Recommended</span>}</span><b>{formatNaira(tier.price)} <small>/ check</small></b><span className="dashboard-tier-desc">{tier.description}</span><ul>{tier.includes.map(item=><li key={item}><Check size={15}/>{item}</li>)}</ul><small className="dashboard-turnaround"><Clock size={14}/> Turnaround: {tier.turnaround}</small></span></label>)}</fieldset><div className="dashboard-flow-summary"><span><strong>{selectedTier.name}</strong><small>Total (estimate)</small></span><b>{formatNaira(selectedTier.price)}</b><Button onClick={()=>setTierStep(false)}>Continue <ArrowRight size={17}/></Button></div></>:<><form id="verification-details-form" className="tt-form" onSubmit={createRequest} noValidate>
+      {tierStep?<><fieldset className="dashboard-tier-options"><legend className="sr-only">Choose a verification tier</legend>{tiers.map(tier=><label key={tier.id} className={`dashboard-tier-option${selectedTier.id===tier.id?' is-selected':''}`}><input type="radio" name="verification-tier" value={tier.id} checked={selectedTier.id===tier.id} disabled={!tier.enabled} onChange={()=>setSelectedTierId(tier.id)}/><span className="dashboard-tier-option-content"><span className="dashboard-tier-option-head"><strong>{tier.name}</strong>{tier.recommended&&<span>Recommended</span>}</span><b>{formatNaira(tier.price)} <small>/ check</small></b><span className="dashboard-tier-desc">{tier.description}</span><ul>{tier.includes.map(item=><li key={item}><Check size={15}/>{item}</li>)}</ul>{!tier.enabled&&<small>{tier.unavailable_reason || 'Currently unavailable'}</small>}</span></label>)}</fieldset><div className="dashboard-flow-summary"><span><strong>{selectedTier.name}</strong><small>Total (estimate)</small></span><b>{formatNaira(selectedTier.price)}</b><Button onClick={()=>setTierStep(false)}>Continue <ArrowRight size={17}/></Button></div></>:<><form id="verification-details-form" className="tt-form" onSubmit={createRequest} noValidate>
         <Input id="tenant_name" name="tenant_name" label="Tenant full name" autoComplete="name" required maxLength={160} placeholder="As shown on their ID" helper="Use the name the tenant uses on their ID."/>
         <Input id="tenant_phone" name="tenant_phone" label="Tenant phone number" type="tel" inputMode="tel" autoComplete="tel" required placeholder="08012345678" helper="We’ll show you a link to share after payment."/>
         <div className="tt-field"><label htmlFor="property_title">Property label <span className="tt-muted">(optional)</span></label><input id="property_title" name="property_title" maxLength={200} placeholder="e.g. Flat 4, Ikeja"/></div>

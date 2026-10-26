@@ -3,11 +3,12 @@ import { useParams } from 'react-router-dom';
 import { Lock, ShieldCheck } from '../lib/icons';
 import { Brand, Button, Card, ConsentCard, Input, StepIndicator, Toast, VerifiedBadge } from '../components/mvp-ui';
 import { formatScreeningError, screeningApi } from '../lib/screeningApi';
+import { useServiceMode } from '../context/ServiceModeContext';
 
 interface PublicRequest { tenant_name: string; property_title: string; landlord_name: string; }
-const sandbox = import.meta.env.VITE_DEMO_MODE === 'true';
 
 export default function SandboxTenantPortal() {
+  const { sandbox, ready } = useServiceMode();
   const { token = '' } = useParams<{ token: string }>();
   const [request, setRequest] = useState<PublicRequest | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
@@ -42,6 +43,7 @@ export default function SandboxTenantPortal() {
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setError('');
+    if (!ready) { setError('Refresh this page to confirm the verification service mode before continuing.'); return; }
     if (!/^\d{11}$/.test(bvn) || !/^\d{11}$/.test(nin) || !dob) { setError('Enter both 11-digit identifiers and the date of birth.'); return; }
     setBusy(true);
     try {
@@ -65,7 +67,7 @@ export default function SandboxTenantPortal() {
       <ul className="tt-consent-list"><li>Both BVN and NIN, together with date of birth, are checked with Mono.</li><li>Your landlord sees the check result and name-match status.</li><li>Your landlord does not see either identifier or your date of birth.</li><li>Raw identifiers are used for this request and are not saved in the report.</li></ul>
       {sandbox && <p className="tt-name-flag">This is a Sandbox demonstration. Use Mono’s published sample details only.</p>}
       <ConsentCard><label className="tt-check-label"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} /><span>I agree to send these details to Mono for this identity check.</span></label></ConsentCard>
-      <Button className="tt-full" style={{ marginTop: 17 }} onClick={() => void consentNext()} loading={busy} disabled={!consent}>Continue</Button>
+      <Button className="tt-full" style={{ marginTop: 17 }} onClick={() => void consentNext()} loading={busy} disabled={!consent || !ready}>Continue</Button>
     </> : <>
       <h1 style={{ fontSize: 26 }}>Verify your identity</h1>
       {sandbox && <div className="tt-consent-card"><p>Mono Sandbox: BVN <strong>22227777222</strong>, NIN <strong>12345678901</strong>, DOB <strong>1 September 1991</strong>.</p><Button kind="secondary" type="button" onClick={() => { setBvn('22227777222'); setNin('12345678901'); setDob('1991-09-01'); }}>Use Sandbox details</Button></div>}
@@ -73,7 +75,7 @@ export default function SandboxTenantPortal() {
         <Input id="bvn" label="BVN (11 digits)" type="password" inputMode="numeric" autoComplete="off" maxLength={11} pattern="[0-9]{11}" required value={bvn} onChange={event => setBvn(event.target.value.replace(/\D/g, '').slice(0, 11))} />
         <Input id="nin" label="NIN (11 digits)" type="password" inputMode="numeric" autoComplete="off" maxLength={11} pattern="[0-9]{11}" required value={nin} onChange={event => setNin(event.target.value.replace(/\D/g, '').slice(0, 11))} />
         <Input id="dob" label="Date of birth" type="date" autoComplete="off" required value={dob} max={new Date().toISOString().slice(0, 10)} onChange={event => setDob(event.target.value)} />
-        <Button type="submit" loading={busy} disabled={bvn.length !== 11 || nin.length !== 11 || !dob}><ShieldCheck size={19} /> Run {sandbox ? 'Sandbox ' : ''}identity check</Button>
+        <Button type="submit" loading={busy} disabled={!ready || bvn.length !== 11 || nin.length !== 11 || !dob}><ShieldCheck size={19} /> Run {sandbox ? 'Sandbox ' : ''}identity check</Button>
       </form>
     </>}</Card>}
     {result && <Card><div className="tt-result"><VerifiedBadge verified={result.status === 'complete'} /><h2>{result.status === 'complete' ? `${sandbox ? 'Sandbox ' : ''}identity check complete` : 'Identity could not be verified'}</h2><p>The landlord can view the returned result in their dashboard.</p></div>{result.name_match && result.name_match !== 'match' && <p className="tt-name-flag">The submitted name did not match exactly. The report shows this for human review.</p>}{sandbox && <p className="tt-name-flag">Sample identity data only. This result does not verify a real person.</p>}</Card>}

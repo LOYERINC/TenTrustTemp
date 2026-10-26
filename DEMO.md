@@ -10,7 +10,7 @@ Frontend: `www.tentrust.com.ng` on Vercel project `ten-trust`. Backend: `https:/
 
 Render must use `ENVIRONMENT=demo`, `MONO_IDENTITY_CHECKS_ENABLED=true`, `MONO_CREDIT_CHECKS_ENABLED=false`, existing Paystack `sk_test_` credentials, and existing Mono `test_sk_` credentials. Keep all Supabase/signing secrets server-side. Set `PUBLIC_APP_URL=https://www.tentrust.com.ng` and `PAYMENT_CALLBACK_URL=https://www.tentrust.com.ng/dashboard?tab=verify-tenant`. Preserve exact approved CORS origins; include the public www domain. Production mode continues to reject Paystack test credentials.
 
-Vercel builds require `VITE_DEMO_MODE=true`, `VITE_API_BASE_URL=https://tentrust-api.onrender.com`, and existing public Supabase URL/anon key. Configure the same public values for Preview if promoting a preview build. Never put service-role, Paystack secret or Mono secret keys in Vite variables.
+Vercel builds require `VITE_API_BASE_URL=https://tentrust-api.onrender.com` and the existing public Supabase URL/anon key. The banner and sample controls read the backend health response, while the dashboard reads package IDs, availability and prices from the API; they do not rely on a build-time demo flag or placeholder marketing tiers. Configure the same public values for Preview if promoting a preview build. Never put service-role, Paystack secret or Mono secret keys in Vite variables.
 
 ## Presenter journey
 
