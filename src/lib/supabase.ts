@@ -27,6 +27,12 @@ export const isSupabaseConfigured = (): boolean => {
   );
 };
 
+// Capture implicit-flow intent before the SDK consumes and removes the fragment.
+export const initialAuthLinkType = typeof window === 'undefined' ? null
+  : new URLSearchParams(window.location.hash.slice(1)).get('type');
+export const initialAuthLinkHasToken = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.hash.slice(1)).has('access_token');
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,

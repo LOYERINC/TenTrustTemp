@@ -118,6 +118,11 @@ class SupabaseStore:
             raise HTTPException(status_code=503, detail="Unable to finalize payment.") from exc
         logger.info("[payment-timing] db rpc %s status=%s elapsed_ms=%.1f", function, response.status_code, (perf_counter() - started_at) * 1000)
         if response.status_code >= 400:
+            if function == "ensure_screening_tenant_token":
+                raise HTTPException(
+                    status_code=503,
+                    detail="Payment is confirmed, but the tenant link is not ready. Retry Get tenant link on your existing request. Do not pay again.",
+                )
             raise HTTPException(status_code=409, detail="Payment could not be finalized.")
         return response.json() if response.content else None
 

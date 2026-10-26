@@ -1,6 +1,7 @@
 export interface IdentityReport {
   tenant_name: string; property_title: string; status: string; name_match?: string | null;
   identity_verified_at?: string | null; report_id?: string | null; masked_document?: string | null;
+  check_status?: Record<string, string>;
 }
 
 function escapePdf(text: string) { return text.normalize('NFKD').replace(/[^\x20-\x7E]/g, '').replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)'); }
@@ -9,17 +10,18 @@ function escapePdf(text: string) { return text.normalize('NFKD').replace(/[^\x20
 export function downloadIdentityReport(report: IdentityReport) {
   const date = report.identity_verified_at ? new Date(report.identity_verified_at).toLocaleString() : new Date().toLocaleString();
   const verified = report.status === 'complete';
+  const sandbox = import.meta.env.VITE_DEMO_MODE === 'true' || report.check_status?.environment === 'sandbox';
   const lines = [
     { text: 'TenTrust', size: 22, y: 748, color: '0.11 0.31 0.85' },
-    { text: 'IDENTITY VERIFICATION REPORT', size: 11, y: 714, color: '0.39 0.45 0.55' },
+    { text: sandbox ? 'SANDBOX DEMO - SAMPLE IDENTITY REPORT' : 'IDENTITY VERIFICATION REPORT', size: 11, y: 714, color: '0.39 0.45 0.55' },
     { text: `Report ID: ${report.report_id || 'Pending'}`, size: 11, y: 685, color: '0.06 0.09 0.16' },
     { text: `Date: ${date}`, size: 11, y: 666, color: '0.06 0.09 0.16' },
-    { text: verified ? 'Identity verified' : 'Could not verify', size: 20, y: 616, color: verified ? '0.09 0.45 0.23' : '0.72 0.38 0.03' },
+    { text: verified ? sandbox ? 'Sandbox identity check complete' : 'Identity verified' : 'Could not verify', size: 20, y: 616, color: verified ? '0.09 0.45 0.23' : '0.72 0.38 0.03' },
     { text: `Tenant: ${report.tenant_name}`, size: 12, y: 570, color: '0.06 0.09 0.16' },
     { text: `Property: ${report.property_title}`, size: 12, y: 546, color: '0.06 0.09 0.16' },
     { text: `Name match: ${report.name_match || 'Not available'}`, size: 12, y: 522, color: '0.06 0.09 0.16' },
     { text: `Document: ${report.masked_document || 'Not available'}`, size: 12, y: 498, color: '0.06 0.09 0.16' },
-    { text: 'This report supports a landlord review. It is not a rental decision.', size: 10, y: 70, color: '0.39 0.45 0.55' },
+    { text: sandbox ? 'DEMO DATA ONLY. This does not verify a real person or support a rental decision.' : 'This report supports a landlord review. It is not a rental decision.', size: 10, y: 70, color: '0.39 0.45 0.55' },
   ];
   const stream = ['0.11 0.31 0.85 rg 0 792 612 9 re f', ...lines.map(l => `BT /F1 ${l.size} Tf ${l.color} rg 50 ${l.y} Td (${escapePdf(l.text)}) Tj ET`)].join('\n');
   const objects = [

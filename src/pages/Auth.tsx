@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { User, ArrowRight, CheckCircle2, Lock, Mail, Sparkles, AlertCircle, Eye, EyeSlash } from '../lib/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { screeningApi } from '../lib/screeningApi';
+import { safeDashboardReturnTo } from '../lib/authLinks';
 import { Logo } from '../components/mvp-ui';
 
 export default function Auth() {
@@ -21,20 +23,23 @@ export default function Auth() {
   const { user, signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithMagicLink, loginAsDemo } = useAuth();
 
   useEffect(() => {
+    const target = safeDashboardReturnTo(new URLSearchParams(window.location.search).get('returnTo'), window.location.origin);
+    if (target) sessionStorage.setItem('tentrust_auth_return', target);
+  }, []);
+
+  useEffect(() => {
     if (user) {
+      let active = true;
       const searchParams = new URLSearchParams(window.location.search);
       const action = searchParams.get('action');
-      if (user.role === 'admin') {
-        navigate('/admin');
-      } else if (user.role === 'landlord') {
-        if (action === 'verify') {
-          navigate('/dashboard?tab=verify');
-        } else {
-          navigate('/dashboard');
-        }
-      } else {
-        navigate('/tenant');
-      }
+      const returnTo = safeDashboardReturnTo(searchParams.get('returnTo') || sessionStorage.getItem('tentrust_auth_return'), window.location.origin);
+      if (returnTo) { sessionStorage.removeItem('tentrust_auth_return'); navigate(returnTo, { replace: true }); return; }
+      void screeningApi('/api/admin/me').then(() => {
+        if (active) navigate('/admin', { replace: true });
+      }).catch(() => {
+        if (active) navigate(user.role === 'tenant' ? '/tenant' : action === 'verify' ? '/dashboard?tab=verify' : '/dashboard', { replace: true });
+      });
+      return () => { active = false; };
     }
   }, [user, navigate]);
 
@@ -95,6 +100,33 @@ export default function Auth() {
     }
   };
 
+  const handlePasswordReset = async () => {
+    if (!email.trim()) { setErrorMessage('Enter your email address first.'); return; }
+    setIsProcessing(true); setErrorMessage(''); setSuccessMessage('');
+    try {
+      if (!isSupabaseConfigured()) throw new Error('Email recovery is temporarily unavailable.');
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: window.location.origin + '/auth/reset-password',
+      });
+      if (error) throw error;
+      setSuccessMessage('If an account exists for this address, we’ll send a password-reset link.');
+    } catch { setErrorMessage('We couldn’t request a reset link. Please try again shortly.'); }
+    finally { setIsProcessing(false); }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!email.trim()) { setErrorMessage('Enter your email address first.'); return; }
+    setIsProcessing(true); setErrorMessage(''); setSuccessMessage('');
+    try {
+      if (!isSupabaseConfigured()) throw new Error('Unavailable');
+      const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase(),
+        options: { emailRedirectTo: window.location.origin + '/auth/callback' } });
+      if (error) throw error;
+      setSuccessMessage('If this account needs confirmation, we’ll send a fresh confirmation link.');
+    } catch { setErrorMessage('We couldn’t request a confirmation link. Please try again shortly.'); }
+    finally { setIsProcessing(false); }
+  };
+
   const handleDemoSignIn = async (demoRole: UserRole) => {
     setIsProcessing(true);
     try {
@@ -143,7 +175,7 @@ export default function Auth() {
           <fieldset className="tt-auth-role-group">
             <legend>I’m joining as a</legend>
             <div className="tt-auth-role-options">
-              {([{ id: 'landlord', label: 'Landlord' }, { id: 'tenant', label: 'Tenant' }, { id: 'admin', label: 'Admin' }] as const).map((item) => <label className="tt-auth-role-pill" key={item.id}>
+              {([{ id: 'landlord', label: 'Landlord' }, { id: 'tenant', label: 'Tenant' }] as const).map((item) => <label className="tt-auth-role-pill" key={item.id}>
                 <input type="radio" name="account-role" value={item.id} checked={role === item.id} onChange={() => setRole(item.id as UserRole)} />
                 <span>{item.label}</span>
               </label>)}
@@ -160,7 +192,7 @@ export default function Auth() {
             </div>}
             <div className="tt-auth-field"><label htmlFor="auth-email">Email address</label><span className="tt-auth-input-wrap"><Mail size={18} aria-hidden="true"/><input id="auth-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" aria-invalid={Boolean(emailFieldError)} aria-describedby={emailFieldError ? 'email-error' : undefined}/></span>{emailFieldError && <small id="email-error" className="tt-auth-field-error">{emailFieldError}</small>}</div>
             <div className="tt-auth-field"><label htmlFor="auth-password">Password</label><span className="tt-auth-input-wrap"><Lock size={18} aria-hidden="true"/><input id="auth-password" type={showPassword ? 'text' : 'password'} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" aria-invalid={Boolean(passwordFieldError)} aria-describedby={passwordFieldError ? 'password-error' : undefined}/><button className="tt-auth-password-toggle" type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((v) => !v)}>{showPassword ? <EyeSlash size={19}/> : <Eye size={19}/>}</button></span>{passwordFieldError && <small id="password-error" className="tt-auth-field-error">{passwordFieldError}</small>}</div>
-            {mode === 'signin' && <div className="tt-auth-forgot-row"><button type="button" onClick={handleMagicLink} disabled={isProcessing}>Forgot password?</button></div>}
+            {mode === 'signin' && <div className="tt-auth-forgot-row"><button type="button" onClick={handlePasswordReset} disabled={isProcessing}>Forgot password?</button><button type="button" onClick={handleMagicLink} disabled={isProcessing}>Email a sign-in link</button><button type="button" onClick={handleResendConfirmation} disabled={isProcessing}>Resend confirmation</button></div>}
             <button type="submit" disabled={isProcessing} className="tt-auth-submit"><span className={isProcessing ? 'tt-auth-spinner' : 'tt-auth-submit-icon'} aria-hidden="true">{isProcessing ? '' : <ArrowRight size={19}/>}</span>{isProcessing ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button>
           </form>
 
@@ -171,9 +203,8 @@ export default function Auth() {
           </button>
           <p className="tt-auth-legal">By continuing you agree to our <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.</p>
 
-          {!isSupabaseConfigured() && <section className="tt-auth-demo" aria-label="Demo accounts"><p>Explore a demo account</p><div>
+          {!import.meta.env.PROD && !isSupabaseConfigured() && <section className="tt-auth-demo" aria-label="Demo accounts"><p>Explore a demo account</p><div>
             <button type="button" onClick={() => handleDemoSignIn('landlord')} disabled={isProcessing}><User size={16}/>Landlord demo</button>
-            <button type="button" onClick={() => handleDemoSignIn('admin')} disabled={isProcessing}>Admin demo</button>
             <button type="button" onClick={() => handleDemoSignIn('tenant')} disabled={isProcessing}>Tenant demo</button>
           </div></section>}
         </div>

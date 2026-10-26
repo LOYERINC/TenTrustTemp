@@ -26,8 +26,6 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     TENANT_LINK_SIGNING_KEY: str = ""
-    RESEND_API_KEY: str = ""
-    SCREENING_NOTIFICATION_FROM_EMAIL: str = ""
     PAYSTACK_SECRET_KEY: str = ""
     PAYMENT_PROVIDER: str = "paystack"
     FLW_SECRET_KEY: str = ""
@@ -36,8 +34,17 @@ class Settings(BaseSettings):
     PUBLIC_APP_URL: str = "http://localhost:3000"
     SCREENING_CONSENT_VERSION: str = "2026-10-02"
     IDENTITY_VERIFICATION_PRICE_NGN: int = 3000
-    IDENTITY_CONSENT_VERSION: str = "2026-10-12"
+    IDENTITY_CONSENT_VERSION: str = "2026-10-25"
     SCREENING_PRICES_CONFIRMED: bool = False
+    ENCRYPTION_KEY: str = ""
+    HASH_PEPPER: str = ""
+    LIVENESS_PROVIDER: str = "manual_review"
+    DATA_RETENTION_DAYS: int = 30
+    VERIFICATION_POLICY_VERSION: str = "2026-10-25"
+    VERIFICATION_STORAGE_BUCKET: str = "verification-evidence"
+    VERIFICATION_JOB_SECRET: str = ""
+    AFFORDABILITY_PASS_RATIO: str = "0.40"
+    AFFORDABILITY_REVIEW_RATIO: str = "0.50"
 
     @property
     def cors_origins(self) -> List[str]:
@@ -50,4 +57,5 @@ class Settings(BaseSettings):
     )
 
 
+# Reload triggered for MONO_IDENTITY_CHECKS_ENABLED update
 settings = Settings()
