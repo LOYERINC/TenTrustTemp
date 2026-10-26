@@ -248,6 +248,10 @@ async def _process_screening(
     consent_method: str,
 ) -> Dict[str, Any]:
     package_id = row["package_id"]
+    if package_id == "identity":
+        raise HTTPException(status_code=400, detail="Complete identity verification using the tenant consent and identity form.")
+    if settings.ENVIRONMENT == "demo":
+        raise HTTPException(status_code=503, detail="This Sandbox release supports the sample Identity check only.")
     monthly_rent = payload.monthly_rent or row.get("monthly_rent")
     if not monthly_rent:
         raise HTTPException(status_code=422, detail="Monthly rent is required to calculate the readiness score.")
