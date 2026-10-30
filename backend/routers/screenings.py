@@ -18,6 +18,7 @@ from routers.mono import mono_service
 from services.scoring import calculate_readiness_score
 from services.screening_store import SupabaseStore, authenticated_user, authenticated_user_id, get_http_client, hash_token
 
+from services.package_policy import NEW_PACKAGES, statement_required
 from services import payment_orders as orders
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ PACKAGES: Dict[str, Dict[str, Any]] = {
     "premium": {"id": "premium", "name": "Premium", "price": 12000, "currency": "NGN", "checks": ["readiness_score", "credit_bureau"], "credit_provider": "all", "check_count": 1},
     "founding": {"id": "founding", "name": "Founding Member", "price": 25000, "currency": "NGN", "checks": ["3_premium_checks"], "credit_provider": "all", "check_count": 3},
 }
+PACKAGES.update(NEW_PACKAGES)
 
 
 class ScreeningCreate(BaseModel):
@@ -112,7 +114,22 @@ def _tenant_rate_limit(request: Request, token: str) -> None:
 
 def _package_availability(package_id: str) -> tuple[bool, list[str]]:
     package = PACKAGES[package_id]
+    if package_id in NEW_PACKAGES:
+        missing = []
+        if package_id == "custom_v2": return False, ["Choose your checks and request a quote."]
+        if not settings.SCREENING_V2_ENABLED: missing.append("The new tenant flow is being set up.")
+        if not settings.MONO_IDENTITY_CHECKS_ENABLED or not settings.MONO_SECRET_KEY: missing.append("ID checks are not configured.")
+        if settings.PAYSTACK_SECRET_KEY.startswith("sk_live_") and not settings.MONO_SECRET_KEY.startswith("live_sk_"):
+            missing.append("Live ID checks must be configured before accepting real payments.")
+        if package_id == "intermediate_v2" and not settings.MONO_CREDIT_CHECKS_ENABLED: missing.append("Credit checks are not configured.")
+        if not settings.PAYSTACK_SECRET_KEY: missing.append("Payments are not configured.")
+        if not (settings.SUPABASE_URL and settings.SUPABASE_ANON_KEY and settings.SUPABASE_SERVICE_ROLE_KEY): missing.append("Screening storage is not configured.")
+        if settings.ENVIRONMENT == "production" and (not settings.SCREENING_PRICES_CONFIRMED or settings.PAYSTACK_SECRET_KEY.startswith("sk_test_")): missing.append("Live checkout is not approved.")
+        if settings.ENVIRONMENT == "demo": missing.append("New packages are not part of the legacy Sandbox demo.")
+        return not missing, missing
     missing = []
+    if settings.PAYSTACK_SECRET_KEY.startswith("sk_live_") and not settings.MONO_SECRET_KEY.startswith("live_sk_"):
+        missing.append("Live ID checks must be configured before accepting real payments.")
     if package_id == "identity" and (not settings.MONO_SECRET_KEY or not settings.MONO_IDENTITY_CHECKS_ENABLED):
         missing.append("identity verification is not configured")
     if package_id in ("standard", "premium", "founding"):
@@ -148,6 +165,8 @@ def _package_availability(package_id: str) -> tuple[bool, list[str]]:
 def _public_package(package_id: str) -> Dict[str, Any]:
     package = PACKAGES[package_id]
     enabled, reasons = _package_availability(package_id)
+    if package_id in NEW_PACKAGES:
+        return {**package, "enabled": enabled, "unavailable_reason": "; ".join(reasons) if reasons else None}
     description = {
         "identity": "One consent-based identity check. Your tenant enters their ID details in private.",
         "basic": "A score based on rent and income.",
@@ -256,7 +275,7 @@ async def _process_screening(
     consent_method: str,
 ) -> Dict[str, Any]:
     package_id = row["package_id"]
-    if package_id == "identity":
+    if package_id == "identity" or package_id in NEW_PACKAGES:
         raise HTTPException(status_code=400, detail="Complete identity verification using the tenant consent and identity form.")
     if settings.ENVIRONMENT == "demo":
         raise HTTPException(status_code=503, detail="This Sandbox release supports the sample Identity check only.")
@@ -361,7 +380,7 @@ def payment_mode(provider: str) -> str:
 
 @router.get("/api/screenings/packages")
 async def list_packages():
-    return {"packages": [_public_package(package_id) for package_id in PACKAGES]}
+    return {"packages": [_public_package(package_id) for package_id in NEW_PACKAGES]}
 
 
 @router.get("/api/screenings")
@@ -393,8 +412,10 @@ async def list_screenings(limit: int = 20, authorization: Optional[str] = Header
 async def create_screening(payload: ScreeningCreate, authorization: Optional[str] = Header(default=None)):
     user = await authenticated_user(authorization)
     user_id = user["id"]
-    if payload.package_id not in PACKAGES:
+    if payload.package_id not in NEW_PACKAGES:
         raise HTTPException(status_code=422, detail="Choose a valid screening package.")
+    if payload.package_id in NEW_PACKAGES and payload.intake_mode != "tenant_link":
+        raise HTTPException(status_code=422, detail="These packages require the tenant’s private link.")
     package = _public_package(payload.package_id)
     if not package["enabled"]:
         raise HTTPException(status_code=409, detail=package["unavailable_reason"] or "This package is not available.")
@@ -649,6 +670,8 @@ async def issue_tenant_link(screening_id: str, authorization: Optional[str] = He
     user_id = await authenticated_user_id(authorization)
     store = SupabaseStore()
     row = await _owner_screening(store, screening_id, user_id)
+    if row["package_id"] in NEW_PACKAGES and (row.get("check_status") or {}).get("liveness") == "pending_review":
+        raise HTTPException(status_code=409, detail="This screening is waiting for staff review. No new tenant link is needed.")
     if row["intake_mode"] != "tenant_link" or row["payment_status"] != "paid" or row["status"] in ("complete", "declined"):
         raise HTTPException(status_code=409, detail="A tenant link is not available for this screening.")
     return {"tenant_url": await _issue_tenant_link(store, row), "status": row["status"]}
@@ -700,6 +723,8 @@ async def get_public_screening(token: str, request: Request):
         "property_title": row["property_title"],
         "landlord_name": row.get("landlord_name") or "Your landlord",
         "package": _public_package(row["package_id"]),
+        "monthly_rent": row.get("monthly_rent"),
+        "statement_required": statement_required(row["package_id"], row.get("monthly_rent")),
     }
 
 
@@ -720,18 +745,20 @@ async def capture_public_screening_consent(token: str, payload: TenantConsentCap
     if not row or row["status"] == "complete":
         raise HTTPException(status_code=404, detail="This tenant link has already been used or is unavailable.")
     existing = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
+    new_flow = row["package_id"] in NEW_PACKAGES
+    version = settings.SCREENING_V2_CONSENT_VERSION if new_flow else settings.IDENTITY_CONSENT_VERSION
     consent_data = {
             "screening_id": row["id"],
             "landlord_id": row["landlord_id"],
             "method": "tenant_direct_consent",
             "consented_as": row["tenant_name"],
-            "purpose": "Identity verification: compare the tenant-provided BVN, NIN and date of birth; landlord sees verification result and name-match status only.",
-            "version": settings.IDENTITY_CONSENT_VERSION,
+            "purpose": ("BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
+            "version": version,
             "collected_at": datetime.now(timezone.utc).isoformat(),
         }
     if not existing:
         await store.insert("screening_consents", consent_data)
-    elif existing.get("version") != settings.IDENTITY_CONSENT_VERSION:
+    elif existing.get("version") != version:
         await store.patch("screening_consents", {"id": f"eq.{existing['id']}"}, consent_data)
     return {"consent_recorded": True}
 
@@ -774,6 +801,8 @@ async def complete_public_identity(token: str, request: Request):
     row = await store.get_one("screening_requests", {"id": f"eq.{token_row['screening_id']}", "payment_status": "eq.paid"})
     if not row or row.get("status") in ("complete", "declined", "expired"):
         raise HTTPException(status_code=410, detail="This link has already been used or is no longer available.")
+    if row["package_id"] in NEW_PACKAGES:
+        raise HTTPException(status_code=409, detail="Use the new tenant screening steps to finish this package.")
     consent = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
     if not consent:
         raise HTTPException(status_code=403, detail="Please give consent before continuing.")

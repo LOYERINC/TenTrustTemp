@@ -69,8 +69,36 @@ class MonoService:
         provider: str = "all",
         reason: Optional[str] = "Credit Assessment"
     ) -> Dict[str, Any]:
-        """Disabled until a separately reviewed credit adapter is available."""
-        raise HTTPException(status_code=503, detail="Credit checks are not available in this release.")
+        """Consent-gated credit lookup; return a minimal result without identifiers."""
+        if not settings.MONO_CREDIT_CHECKS_ENABLED or not self.secret_key:
+            raise HTTPException(status_code=503, detail="Credit checks are not configured.")
+        if provider not in ("crc", "xds", "all") or len(bvn) != 11 or not bvn.isascii() or not bvn.isdigit():
+            raise HTTPException(status_code=422, detail="Check the BVN and credit provider.")
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(f"{self.base_url}/v3/lookup/credit-history/{provider}", headers=self._get_headers(), json={"bvn": bvn})
+        except httpx.RequestError:
+            raise HTTPException(status_code=503, detail="The credit service is not available. Please try again.")
+        finally:
+            bvn = ""
+        if response.status_code >= 400:
+            raise HTTPException(status_code=503, detail="The credit check could not finish. Please contact support or try later.")
+        try: result = response.json()
+        except ValueError: raise HTTPException(status_code=502, detail="The credit result could not be read.")
+        if not isinstance(result, dict) or result.get("status") not in (True,"success","successful") or not isinstance(result.get("data"),dict):
+            raise HTTPException(status_code=502, detail="The credit result could not be read.")
+        data = result["data"]
+        histories = data.get("credit_history")
+        if not isinstance(histories, list): raise HTTPException(status_code=502, detail="The credit result is incomplete.")
+        flags = []
+        for group in histories:
+            if not isinstance(group, dict) or not isinstance(group.get("history"),list):
+                flags.append("review")
+                continue
+            for loan in group["history"]:
+                state = loan.get("performance_status") if isinstance(loan,dict) else None
+                if state != "performing": flags.append("review")
+        return {"status": "successful", "data": {"credit_result": "needs_review" if flags else "no_adverse_flags", "disclaimer": "Available bureau records only; not a promise of future payment."}}
 
     async def exchange_auth_code(self, code: str) -> Dict[str, Any]:
         """

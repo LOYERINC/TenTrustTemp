@@ -1,3 +1,4 @@
+import ScreeningTenantFlow from './ScreeningTenantFlow';
 import { FormEvent, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Lock, ShieldCheck } from '../lib/icons';
@@ -5,7 +6,7 @@ import { Brand, Button, Card, ConsentCard, Input, StepIndicator, Toast, Verified
 import { formatScreeningError, screeningApi } from '../lib/screeningApi';
 import { useServiceMode } from '../context/ServiceModeContext';
 
-interface PublicRequest { tenant_name: string; property_title: string; landlord_name: string; }
+interface PublicRequest { package?: {id: string}; tenant_name: string; property_title: string; landlord_name: string; }
 
 export default function SandboxTenantPortal() {
   const { sandbox, ready } = useServiceMode();
@@ -54,6 +55,8 @@ export default function SandboxTenantPortal() {
     } catch (err) { setError(formatScreeningError(err)); }
     finally { setBvn(''); setNin(''); setDob(''); setBusy(false); }
   }
+
+  if(request?.package?.id === 'basic_v2' || request?.package?.id === 'intermediate_v2') return <ScreeningTenantFlow token={token} landlord={request.landlord_name} property={request.property_title} intermediate={request.package.id === 'intermediate_v2'}/>;
 
   return <main className="tt-tenant-page"><div className="tt-tenant-wrap">
     <header className="tt-tenant-header"><Brand /><span className="tt-secured"><Lock size={15} /> Secured</span></header>

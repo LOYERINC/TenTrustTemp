@@ -37,6 +37,7 @@ async def overview(_user=Depends(require_admin)):
 
 # Static allowlists are also the response privacy boundary. No select=* on source records.
 RESOURCES = {
+    "quotes": ("screening_quote_requests", "id,landlord_id,checks,monthly_rent,notes,created_at", "created_at", "notes", ""),
     "users": ("admin_users", "id,email,first_name,last_name,role,status,created_at,last_sign_in_at,email_confirmed_at", "created_at", "email", "status"),
     "waitlist": ("waitlist", "id,name,email,role,submitted_at", "submitted_at", "email", "role"),
     "payments": ("screening_payments", "id,reference,screening_id,landlord_id,provider,mode,amount_kobo,currency,status,created_at,verified_at", "created_at", "reference", "status"),
@@ -53,6 +54,8 @@ def page_params(resource: str, page: int, limit: int, search: str, status: str,
     safe_search = re.sub(r"[^\w@+\- .]", "", search, flags=re.UNICODE).strip()[:100]
     if safe_search:
         params[search_column] = f"ilike.*{safe_search}*"
+    if status and not status_column:
+        raise HTTPException(status_code=422, detail="Status filtering is not supported for this resource.")
     if status:
         if not re.fullmatch(r"[a-z_]{1,40}", status):
             raise HTTPException(status_code=422, detail="Invalid status filter.")

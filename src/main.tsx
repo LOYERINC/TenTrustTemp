@@ -13,3 +13,6 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+import './styles/navigation.css';
+import './styles/textured-cards.css';
+import './styles/sample-report.css';

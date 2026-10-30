@@ -33,6 +33,8 @@ services:
         value: https://www.tentrust.com.ng
       - key: ALLOWED_ORIGINS
         value: "https://www.tentrust.com.ng,https://tentrust.com.ng,https://ten-trust.vercel.app"
+      - key: SCREENING_V2_ENABLED
+        value: "false"
       - key: SCREENING_PRICES_CONFIRMED
         value: "false"
       - key: SCREENING_CONSENT_VERSION
