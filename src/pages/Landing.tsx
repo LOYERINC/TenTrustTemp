@@ -195,7 +195,7 @@ export default function Landing() {
             <article><span className="tt-icon-tile" aria-hidden="true"><Lock/></span><div><h3>ID numbers stay private</h3><p>The report hides the full BVN and NIN numbers.</p></div></article>
             <article><span className="tt-icon-tile" aria-hidden="true"><ShieldCheck/></span><div><h3>We take care</h3><p>{siteConfig.ndpaConfirmed ? 'Aligned with the Nigeria Data Protection Act.' : 'We build with Nigeria’s data rules in mind.'}</p></div></article>
           </div>
-          <p className="tt-privacy-outcome">You see the result. Full ID numbers stay hidden.</p>
+          {siteConfig.ndpcRegistered && <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',marginTop:28}}><a href="https://ndpc.gov.ng/" target="_blank" rel="noopener noreferrer" aria-label="Nigeria Data Protection Commission"><img src="/brand/ndpc-logo.png" alt="Nigeria Data Protection Commission (NDPC)" loading="lazy" style={{width:160,maxWidth:'100%',height:'auto',background:'#fff',padding:12,borderRadius:8}}/></a><span>NDPC registered</span></div>}<p className="tt-privacy-outcome">You see the result. Full ID numbers stay hidden.</p>
           <Link to="/privacy" className="tt-light-link">Read how we use your data <ArrowRight size={16} aria-hidden="true"/></Link>
         </Container>
       </section>
@@ -230,7 +230,7 @@ export default function Landing() {
           <div><Link to="/" aria-label="TenTrust home"><Logo/></Link><p>Simple checks. More trust.</p></div>
           <div><h3>Product</h3><a href="#how-it-works">How it works</a><a href="#pricing">Pricing</a><a href="/comingsoon/">Coming soon</a></div>
           <div><h3>Company</h3><Link to="/auth">Log in</Link><a href={siteConfig.socials.linkedin || '#'}>LinkedIn</a><a href={siteConfig.socials.instagram || '#'}>Instagram</a></div>
-          <div><h3>Legal &amp; contact</h3><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>{siteConfig.whatsapp && <a href={`https://wa.me/${siteConfig.whatsapp.replace(/\D/g, '')}`}>WhatsApp support</a>}{siteConfig.registeredAddress && <span className="tt-footer-address"><MapPin size={15} aria-hidden="true"/>{siteConfig.registeredAddress}</span>}</div>
+          <div><h3>Legal &amp; contact</h3><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>{siteConfig.whatsapp && <a href={`https://wa.me/${siteConfig.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">Contact us on WhatsApp</a>}{siteConfig.registeredAddress && <span className="tt-footer-address"><MapPin size={15} aria-hidden="true"/>{siteConfig.registeredAddress}</span>}</div>
         </div>
         <div className="tt-footer-bottom"><span>© {new Date().getFullYear()} TenTrust. All rights reserved.</span><a href="#top">Back to top <ArrowUp size={16} aria-hidden="true"/></a></div>
       </Container>

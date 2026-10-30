@@ -21,7 +21,8 @@ export const siteConfig = {
   launchProof: ['', 'We ask the tenant first', '', ''], // Fill only claims you can verify; empty entries are hidden.
   cacNumber: '',
   supportEmail: 'contact@tentrust.com.ng',
-  whatsapp: '',
+  whatsapp: '2349058283054',
+  ndpcRegistered: true,
   registeredAddress: '',
   socials: { instagram: '', linkedin: '' },
   faq: [

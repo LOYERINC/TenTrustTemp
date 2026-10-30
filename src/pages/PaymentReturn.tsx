@@ -68,7 +68,7 @@ export default function PaymentReturn() {
         {['pending','failed','abandoned'].includes(state)&&<button type="button" className={button+' mt-5'} disabled={busy} onClick={()=>void retry()}>{busy?'Rechecking…':state==='pending'?'Check again':'Retry payment'}</button>}
       </>}
     {reference&&<p className="mt-5 break-all text-sm text-slate-600">Payment reference: <strong>{reference}</strong></p>}
-    <div className="mt-6 flex flex-wrap gap-5 text-sm font-semibold text-blue-800"><a href={'mailto:contact@tentrust.com.ng?'+new URLSearchParams({subject:'Payment help: '+(reference||'missing reference'),body:'Please help confirm my payment. Reference: '+(reference||'unknown')})}>Contact support</a></div>
+    <div className="mt-6 flex flex-wrap gap-5 text-sm font-semibold text-blue-800"><a href={'mailto:contact@tentrust.com.ng?'+new URLSearchParams({subject:'Payment help: '+(reference||'missing reference'),body:'Please help confirm my payment. Reference: '+(reference||'unknown')})}>Contact support</a><a href={'https://wa.me/2349058283054?'+new URLSearchParams({text:'Hello TenTrust, I need help with my payment. Reference: '+(reference||'not available')})} target="_blank" rel="noopener noreferrer">Contact us on WhatsApp</a></div>
   </Shell>;
 }
 
