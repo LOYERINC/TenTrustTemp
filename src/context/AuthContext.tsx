@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { authCallbackUrl } from '../lib/authLinks';
 
 export type UserRole = 'admin' | 'landlord' | 'tenant';
 
@@ -187,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: cleanEmail,
           password,
           options: {
-            emailRedirectTo: window.location.origin + '/auth/callback',
+            emailRedirectTo: authCallbackUrl(window.location.origin),
             data: {
               first_name: metadata.firstName,
               last_name: metadata.lastName,
@@ -264,7 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: authCallbackUrl(window.location.origin),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -283,7 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.auth.signInWithOtp({
           email: cleanEmail,
           options: {
-            emailRedirectTo: window.location.origin + '/auth/callback',
+            emailRedirectTo: authCallbackUrl(window.location.origin),
             shouldCreateUser: false,
           },
         });

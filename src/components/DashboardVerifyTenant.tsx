@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { BadgeCheck, CheckCircle2, ChevronRight, Copy, CreditCard, ExternalLink, Info, Link as LinkIcon, LoaderCircle, ShieldCheck, User, UserRoundPlus, XCircle } from '../lib/icons';
 import { ScreeningApiError, ScreeningPackage, ReadinessScore, formatScreeningError, screeningApi } from '../lib/screeningApi';
 import { redirectToPaymentCheckout } from '../lib/paymentCheckout';
+import { OrderStatus, paymentReturnPath } from '../lib/paymentReturn';
 
 interface Property {
   id: string;
@@ -40,20 +41,6 @@ interface ScreeningHistoryItem {
 
 type IntakeMode = 'direct' | 'tenant_link';
 type PageState = 'packages' | 'details' | 'confirming_payment' | 'paid' | 'processing' | 'complete' | 'link_ready';
-const PENDING_PAYMENT_KEY = 'tentrust.pendingScreeningPayment';
-
-function readPendingPayment(): { screeningId?: string; reference?: string } {
-  try {
-    return JSON.parse(window.sessionStorage.getItem(PENDING_PAYMENT_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function clearPendingPayment() {
-  try { window.sessionStorage.removeItem(PENDING_PAYMENT_KEY); } catch { /* Session storage can be unavailable in restricted browsers. */ }
-}
-
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15';
 const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-600';
 const checkLabels: Record<string, string> = {
@@ -282,7 +269,6 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
       } else {
         await showPaidScreening(returnedScreeningId, reference);
       }
-      clearPendingPayment();
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('screening');
       cleanUrl.searchParams.delete('reference');
@@ -350,9 +336,8 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
         .finally(() => setBusy(false));
       return;
     }
-    const pending = readPendingPayment();
-    const screeningId = returnedScreeningId || pending.screeningId;
-    const paymentReference = reference || pending.reference;
+    const screeningId = returnedScreeningId;
+    const paymentReference = reference;
     if (!screeningId || !paymentReference) return;
     void confirmPaymentReturn(screeningId, paymentReference);
   }, []);
@@ -433,14 +418,13 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
         setPremiumCredits((value) => Math.max(0, value - 1));
         return;
       }
-      const checkout = await screeningApi<{ authorization_url: string; reference: string }>(
+      const checkout = await screeningApi<OrderStatus>(
         `/api/screenings/${encodeURIComponent(created.screening_id)}/checkout`,
         { method: 'POST' },
       );
       setPaymentReference(checkout.reference);
-      if (!checkout.authorization_url) throw new Error('Checkout did not return a payment link. Please retry.');
-      try { window.sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify({ screeningId: created.screening_id, reference: checkout.reference })); } catch { /* The payment provider also returns these values in its callback URL. */ }
-      redirectToPaymentCheckout(checkout.authorization_url);
+      if(checkout.authorization_url)redirectToPaymentCheckout(checkout.authorization_url);
+      else window.location.assign(checkout.status==='paid'?'/dashboard':paymentReturnPath(checkout.reference));
     } catch (requestError) {
       setError(formatScreeningError(requestError));
       setBusy(false);
@@ -559,9 +543,9 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
       } else if (record.payment_status === 'paid') {
         await showPaidScreening(id, record.payment_reference || '');
       } else {
-        const checkout = await screeningApi<{ authorization_url: string }>(`/api/screenings/${encodeURIComponent(id)}/checkout`, { method: 'POST' });
-        if (!checkout.authorization_url) throw new Error('Checkout did not return a payment link. Please retry.');
-        redirectToPaymentCheckout(checkout.authorization_url);
+        const checkout = await screeningApi<OrderStatus>(`/api/screenings/${encodeURIComponent(id)}/checkout`, { method: 'POST' });
+        if(checkout.authorization_url)redirectToPaymentCheckout(checkout.authorization_url);
+        else window.location.assign(checkout.status==='paid'?'/dashboard':paymentReturnPath(checkout.reference));
       }
       await refreshHistory();
     } catch (requestError) {
@@ -572,7 +556,6 @@ export default function DashboardVerifyTenant({ properties }: DashboardVerifyTen
   };
 
   const reset = () => {
-    clearPendingPayment();
     setPageState('packages');
     setTenantName(''); setTenantPhone(''); setTenantEmail(''); setMonthlyRent(selectedProperty?.rentAmount ? String(selectedProperty.rentAmount / 12) : ''); setMonthlyIncome(''); setOnTimePayments(''); setTotalPayments('');
     setIncomeEvidence(false); setRentalReference(false); setConsentConfirmed(false); setProcessingConsent(false); setBvn('');

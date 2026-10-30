@@ -85,6 +85,21 @@ export async function screeningApi<T>(path: string, options: RequestInit = {}, r
   }
   if (paymentVerification) console.info(`[payment-timing] client verify request origin=${new URL(SCREENING_API_BASE).origin} status=${response.status} elapsed_ms=${(performance.now() - fetchStartedAt).toFixed(1)} total_ms=${(performance.now() - requestStartedAt).toFixed(1)}`);
 
+  // Cached profile/session state is not proof the access token is still accepted.
+  // Retry only a rejected authentication check, never an ambiguous network failure.
+  if (requireAuth && response.status === 401) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (data.session?.access_token && !error) {
+      headers.set('Authorization', `Bearer ${data.session.access_token}`);
+      try { response = await fetch(`${SCREENING_API_BASE}${path}`, { ...options, headers }); }
+      catch { throw new ScreeningApiError('The service is temporarily unavailable. Try again shortly.', 0); }
+    } else if (error && (!error.status || error.status >= 500)) {
+      throw new ScreeningApiError('Sign-in renewal is temporarily unavailable. Please try again shortly.', 503);
+    } else {
+      await supabase.auth.signOut({ scope: 'local' });
+    }
+  }
+
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = body?.detail;

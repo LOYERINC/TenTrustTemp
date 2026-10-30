@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { screeningApi } from '../lib/screeningApi';
-import { safeDashboardReturnTo } from '../lib/authLinks';
+import { authCallbackUrl, safeDashboardReturnTo } from '../lib/authLinks';
 import { Logo } from '../components/mvp-ui';
 
 export default function Auth() {
@@ -106,7 +106,7 @@ export default function Auth() {
     try {
       if (!isSupabaseConfigured()) throw new Error('Email recovery is temporarily unavailable.');
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: window.location.origin + '/auth/reset-password',
+        redirectTo: authCallbackUrl(window.location.origin, '/auth/reset-password'),
       });
       if (error) throw error;
       setSuccessMessage('If an account exists for this address, we’ll send a password-reset link.');
@@ -120,7 +120,7 @@ export default function Auth() {
     try {
       if (!isSupabaseConfigured()) throw new Error('Unavailable');
       const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase(),
-        options: { emailRedirectTo: window.location.origin + '/auth/callback' } });
+        options: { emailRedirectTo: authCallbackUrl(window.location.origin) } });
       if (error) throw error;
       setSuccessMessage('If this account needs confirmation, we’ll send a fresh confirmation link.');
     } catch { setErrorMessage('We couldn’t request a confirmation link. Please try again shortly.'); }

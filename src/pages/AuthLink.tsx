@@ -3,11 +3,14 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { initialAuthLinkHasToken, initialAuthLinkType, supabase } from '../lib/supabase';
 import { Logo } from '../components/mvp-ui';
 import { verifyAuthLink } from '../lib/verifyAuthLink';
+import { authLinkReturnTo } from '../lib/authLinks';
 
 export default function AuthLink() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const recovery = pathname === '/auth/reset-password';
+  const returnTo = useRef(authLinkReturnTo(window.location.href, window.location.origin));
+  const signInPath = '/auth' + (returnTo.current ? '?' + new URLSearchParams({returnTo:returnTo.current}) : '');
   const verification = useRef<Promise<void> | null>(null);
   const [state, setState] = useState<'checking' | 'ready' | 'error' | 'saved'>('checking');
   const [password, setPassword] = useState('');
@@ -20,12 +23,12 @@ export default function AuthLink() {
     if (!verification.current) verification.current = (async () => {
       await verifyAuthLink(supabase, window.location.href, recovery,
         { hasToken: initialAuthLinkHasToken, type: initialAuthLinkType });
-      window.history.replaceState(null, '', pathname);
+      window.history.replaceState(null, '', pathname + (returnTo.current ? '?' + new URLSearchParams({returnTo:returnTo.current}) : ''));
     })();
     void verification.current.then(() => {
       if (!active) return;
       setState('ready');
-      if (!recovery) navigate('/auth', { replace: true });
+      if (!recovery) navigate(signInPath, { replace: true });
     }).catch(() => {
       if (active) { setState('error'); setMessage('This email link is invalid or expired. Request a fresh link from the sign-in page.'); }
     });
@@ -56,6 +59,6 @@ export default function AuthLink() {
       <button disabled={busy} className="min-h-11 w-full rounded-lg bg-blue-800 p-3 font-bold text-white disabled:opacity-50">{busy ? 'Saving…' : 'Save new password'}</button>
     </form>}
     {state === 'saved' && <p role="status">Password saved. Sign in with your new password.</p>}
-    {(state === 'saved' || state === 'error') && <Link className="mt-6 inline-flex min-h-11 items-center font-bold text-blue-800 underline" to="/auth">Return to sign in</Link>}
+    {(state === 'saved' || state === 'error') && <Link className="mt-6 inline-flex min-h-11 items-center font-bold text-blue-800 underline" to={signInPath}>Return to sign in</Link>}
   </section></main>;
 }
