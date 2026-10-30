@@ -22,10 +22,8 @@ export function ServiceModeProvider({ children }: { children: ReactNode }) {
     return () => controller.abort();
   }, []);
   return <ServiceModeContext.Provider value={{ sandbox: mode === 'sandbox', ready: mode === 'sandbox' || mode === 'live', manualReview }}>
-    {mode !== 'live' && <aside role="note" style={{ background: '#fff4d6', color: '#5c3a00', borderBottom: '1px solid #e6c67c', padding: '12px 20px', textAlign: 'center', fontSize: 14, lineHeight: 1.5 }}>
-      {mode === 'sandbox' && manualReview ? <><strong>Test mode</strong> · No real money is paid. Use made-up details and test files only.</> : mode === 'sandbox' ? <><strong>TenTrust test demo</strong> · Paystack test payments · Sample ID data. Use test details only. These are sample checks. No real money is paid.</>
-        : mode === 'checking' ? 'Checking if this is test mode…'
-        : 'We can’t tell if this is test mode. Refresh the page before you start.'}
+    {mode === 'sandbox' && <aside role="note" style={{ background: '#fff4d6', color: '#5c3a00', borderBottom: '1px solid #e6c67c', padding: '12px 20px', textAlign: 'center', fontSize: 14, lineHeight: 1.5 }}>
+      {manualReview ? <><strong>Test mode</strong> · No real money is paid. Use made-up details and test files only.</> : <><strong>TenTrust test demo</strong> · Paystack test payments · Sample ID data. Use test details only. These are sample checks. No real money is paid.</>}
     </aside>}
     {children}
   </ServiceModeContext.Provider>;
