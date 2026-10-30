@@ -172,7 +172,7 @@ def _public_package(package_id: str) -> Dict[str, Any]:
     enabled, reasons = _package_availability(package_id)
     if package_id in NEW_PACKAGES:
         manual = settings.SCREENING_IDENTITY_MODE == "manual" and package_id == "basic_v2"
-        return {**package, "checks": ["manual_identity", "liveness", "report"] if manual else package["checks"], "description": "Staff review your submitted ID details and video. No automated BVN/NIN validation." if manual else package["description"], "verification_mode": "manual" if manual else "mono", "enabled": enabled, "unavailable_reason": "; ".join(reasons) if reasons else None}
+        return {**package, "checks": ["manual_identity", "liveness", "report"] if manual else package["checks"], "description": "Our team reviews your ID details and video and prepares your report." if manual else package["description"], "verification_mode": "manual" if manual else "mono", "enabled": enabled, "unavailable_reason": "This plan is not available yet. Please choose Basic or contact us." if settings.SCREENING_IDENTITY_MODE == "manual" and package_id == "intermediate_v2" else "; ".join(reasons) if reasons else None}
     description = {
         "identity": "One consent-based identity check. Your tenant enters their ID details in private.",
         "basic": "A score based on rent and income.",
@@ -423,7 +423,7 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
     if payload.package_id in NEW_PACKAGES and payload.intake_mode != "tenant_link":
         raise HTTPException(status_code=422, detail="These packages require the tenant’s private link.")
     if settings.SCREENING_IDENTITY_MODE == "manual" and payload.package_id == "basic_v2" and not payload.manual_review_acknowledged:
-        raise HTTPException(status_code=422, detail="Basic currently uses manual staff review, without automated BVN/NIN checks. Refresh the page and agree to this service before paying.")
+        raise HTTPException(status_code=422, detail="Basic includes staff review of ID details and video. Refresh the page and agree to this service before paying.")
     package = _public_package(payload.package_id)
     if not package["enabled"]:
         raise HTTPException(status_code=409, detail=package["unavailable_reason"] or "This package is not available.")
@@ -761,7 +761,7 @@ async def capture_public_screening_consent(token: str, payload: TenantConsentCap
             "landlord_id": row["landlord_id"],
             "method": "tenant_direct_consent",
             "consented_as": row["tenant_name"],
-            "purpose": ("Staff manually review your submitted name, BVN, NIN, date of birth and video. No automated BVN/NIN or bureau credit lookup is performed. Your landlord receives only the manual review result." if manual_case(row) else "BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
+            "purpose": ("Staff review your submitted name, BVN, NIN, date of birth and video to prepare your screening report. Your landlord receives the final report, not your private ID numbers or video." if manual_case(row) else "BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
             "version": version,
             "collected_at": datetime.now(timezone.utc).isoformat(),
         }
