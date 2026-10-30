@@ -1,5 +1,6 @@
 """New tenant steps. Evidence never enters landlord report rows."""
 import io
+import re
 import hashlib
 import hmac
 import secrets
@@ -222,7 +223,7 @@ class Decision(BaseModel):
     approved: bool
     statement_covers_three_months: bool = False
     affordability: str = Field(default="not_required", pattern="^(pass|review|not_required)$")
-    identity_outcome: Literal["reviewed", "needs_review"] | None = None
+    identity_outcome: Literal["verified", "reviewed", "needs_review"] | None = None
     identity_notes: str = Field(default="", max_length=2000)
 
 @router.post("/api/admin/screenings/{screening_id}/evidence-decision")
@@ -240,8 +241,10 @@ async def review(screening_id: UUID, payload: Decision, user=Depends(require_adm
         if not payload.identity_outcome or len(payload.identity_notes.strip()) < 10:
             raise HTTPException(422, "Record the manual ID review outcome and a short basis for your review.")
         item = await evidence(store, row["id"], "challenge")
-        await store.patch("screening_private_evidence", {"id": f"eq.{item['id']}"}, {"identity_review_encrypted": encrypt({"outcome": payload.identity_outcome, "notes": payload.identity_notes.strip(), "staff_id": user["id"], "reviewed_at": stamp()}, row["id"])})
-        checks["identity"] = "manual_reviewed" if payload.identity_outcome == "reviewed" else "needs_review"
+        previous = item.get("identity_review_encrypted")
+        saved = await store.patch("screening_private_evidence", {"id": f"eq.{item['id']}", "identity_review_encrypted": f"eq.{previous}" if previous else "is.null"}, {"identity_review_encrypted": encrypt({**(decrypt(previous, row["id"]) if previous else {}), "outcome": payload.identity_outcome, "notes": payload.identity_notes.strip(), "staff_id": user["id"], "reviewed_at": stamp()}, row["id"])})
+        if not saved: raise HTTPException(409, "Another staff member updated this review. Reload before saving.")
+        checks["identity"] = {"verified": "manual_verified", "reviewed": "manual_reviewed", "needs_review": "needs_review"}[payload.identity_outcome]
         checks["identity_method"] = "manual_review"
     required = statement_required(row["package_id"], row.get("monthly_rent"))
     if row["package_id"] == "intermediate_v2" and checks.get("credit_bureau") != "complete": raise HTTPException(409, "Credit check is not complete.")
@@ -253,8 +256,88 @@ async def review(screening_id: UUID, payload: Decision, user=Depends(require_adm
     checks["liveness"] = "verified" if payload.approved else "needs_review"
     if required: checks["affordability"] = payload.affordability
     checks.pop("statement_review", None)
+    if manual_case(row):
+        await store.patch("screening_requests", {"id": f"eq.{screening_id}", "status": "eq.incomplete"}, {"check_status": checks})
+        return {"status": "pending_report", "message": "Review saved privately. Write and publish the landlord report next."}
     await store.patch("screening_requests", {"id": f"eq.{screening_id}"}, {"status": "complete", "check_status": checks, "completed_at": stamp(), "report_id": str(uuid4())})
     return {"status": "complete"}
+
+
+class ReportDraft(BaseModel):
+    body: str = Field(default="", max_length=12000)
+    verdict: Literal["verified", "reviewed", "needs_review"] = "reviewed"
+
+
+async def manual_report_context(screening_id):
+    store = SupabaseStore()
+    row = await store.get_one("screening_requests", {"id": f"eq.{screening_id}"})
+    if not row or not manual_case(row): raise HTTPException(404, "Manual screening not found.")
+    if row.get("payment_status") != "paid": raise HTTPException(409, "Payment must be confirmed first.")
+    item = await evidence(store, str(screening_id), "challenge")
+    if not item or not item.get("identity_intake_encrypted"): raise HTTPException(409, "The tenant has not sent their details.")
+    private = decrypt(item["identity_review_encrypted"], str(screening_id)) if item.get("identity_review_encrypted") else {}
+    return store, row, item, private
+
+
+@router.get("/api/admin/screenings/{screening_id}/report-draft")
+async def get_report_draft(screening_id: UUID, user=Depends(require_admin)):
+    _, row, _, private = await manual_report_context(screening_id)
+    return JSONResponse({"draft": private.get("report_draft", {"body": "", "verdict": "reviewed"}), "review_saved": bool(private.get("reviewed_at")), "published": row.get("credit_report") if row.get("status") == "complete" else None}, headers={"Cache-Control": "no-store"})
+
+
+@router.put("/api/admin/screenings/{screening_id}/report-draft")
+async def save_report_draft(screening_id: UUID, payload: ReportDraft, user=Depends(require_admin)):
+    store, row, item, private = await manual_report_context(screening_id)
+    if row["status"] not in ("incomplete", "complete"): raise HTTPException(409, "Wait for the tenant to finish their steps.")
+    draft = {"body": payload.body.strip(), "verdict": payload.verdict, "saved_at": stamp()}
+    private["report_draft"] = draft
+    previous = item.get("identity_review_encrypted")
+    saved = await store.patch("screening_private_evidence", {"id": f"eq.{item['id']}", "identity_review_encrypted": f"eq.{previous}" if previous else "is.null"}, {"identity_review_encrypted": encrypt(private, row["id"])})
+    if not saved: raise HTTPException(409, "Another staff member updated this review. Reload before saving.")
+    await store.insert("screening_evidence_audit", {"screening_id": row["id"], "staff_id": user["id"], "action": "report_draft_saved"})
+    return {"draft": draft}
+
+
+def validate_public_report(body, intake):
+    # Block full private identifiers even when staff insert spaces or hyphens.
+    digits = re.sub(r"\D", "", body)
+    if any(intake.get(key) and intake[key] in digits for key in ("bvn", "nin")):
+        raise HTTPException(422, "Remove private ID numbers from the landlord report.")
+    dob = intake.get("date_of_birth")
+    if dob:
+        day = datetime.strptime(dob, "%Y-%m-%d")
+        forms = (dob, day.strftime("%d/%m/%Y"), day.strftime("%d-%m-%Y"), day.strftime("%m/%d/%Y"))
+        if any(value in body for value in forms): raise HTTPException(422, "Remove the tenant's date of birth from the landlord report.")
+    if len(body.strip()) < 20: raise HTTPException(422, "Write a report of at least 20 characters before publishing.")
+
+
+@router.post("/api/admin/screenings/{screening_id}/report-publish")
+async def publish_report(screening_id: UUID, user=Depends(require_admin)):
+    store, row, item, private = await manual_report_context(screening_id)
+    draft = private.get("report_draft") or {}
+    body, verdict = draft.get("body", ""), draft.get("verdict")
+    if row["status"] not in ("incomplete", "complete") or not private.get("reviewed_at"):
+        raise HTTPException(409, "Save the private evidence review before publishing.")
+    link = await store.get_one("screening_tenant_tokens", {"screening_id": f"eq.{screening_id}", "consumed_at": "not.is.null"})
+    checks = dict(row.get("check_status") or {})
+    if not link or not await evidence(store, row["id"], "liveness") or checks.get("liveness") not in ("verified", "needs_review"):
+        raise HTTPException(409, "The tenant steps and video review must be finished first.")
+    if verdict not in ("verified", "reviewed", "needs_review"): raise HTTPException(422, "Choose a report result.")
+    if verdict == "verified" and (private.get("outcome") != "verified" or checks.get("liveness") != "verified"):
+        raise HTTPException(409, "A verified report needs an explicit verified manual ID review and a passed video review.")
+    if verdict != "needs_review" and (private.get("outcome") == "needs_review" or checks.get("liveness") == "needs_review"):
+        raise HTTPException(409, "Unresolved checks must be published as needs more review.")
+    validate_public_report(body, decrypt(item["identity_intake_encrypted"], row["id"]))
+    old = row.get("credit_report") or {}
+    if row["status"] == "complete" and old.get("type") == "manual_staff_report" and old.get("body") == body and old.get("verdict") == verdict:
+        return {"status": "complete", "report": old}
+    published_at = stamp()
+    report = {"type": "manual_staff_report", "body": body, "verdict": verdict, "review_method": "manual", "published_at": published_at, "revision": int(old.get("revision", 0)) + 1}
+    # A draft is never placed in a landlord-readable row. Only this explicit action publishes.
+    saved = await store.patch("screening_requests", {"id": f"eq.{screening_id}", "status": f"eq.{row['status']}", "completed_at": f"eq.{row['completed_at']}" if row.get("completed_at") else "is.null"}, {"status": "complete", "credit_report": report, "completed_at": published_at, "report_id": row.get("report_id") or str(uuid4())})
+    if not saved: raise HTTPException(409, "This report changed while you were publishing. Reload it first.")
+    await store.insert("screening_evidence_audit", {"screening_id": row["id"], "staff_id": user["id"], "action": "report_published"})
+    return {"status": "complete", "report": report}
 
 
 class Quote(BaseModel):

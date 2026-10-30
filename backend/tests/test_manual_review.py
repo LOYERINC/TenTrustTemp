@@ -151,7 +151,67 @@ class ManualRouteTests(unittest.TestCase):
             self.assertEqual(result.status_code, 200)
             public = self.store.patch.await_args_list[-1].args[2]
             self.assertEqual(public['check_status']['identity'], 'manual_reviewed')
+            self.assertNotIn('status', public) # A review does not publish a report.
             self.assertNotIn('identity_verified_at', public)
             self.assertNotIn('Synthetic staff review', str(public))
             notes = self.store.patch.await_args_list[0].args[2]['identity_review_encrypted']
             self.assertEqual(vault.decrypt(notes, SID)['staff_id'], 'staff')
+
+
+class ReportTests(unittest.TestCase):
+    def setUp(self):
+        self.app=FastAPI();self.app.include_router(api.router)
+        async def staff(): return {'id':'staff'}
+        self.app.dependency_overrides[api.require_admin]=staff
+        self.client=TestClient(self.app);self.store=AsyncMock()
+        self.row={'id':SID,'status':'incomplete','payment_status':'paid','check_status':{'identity_method':'manual_review','liveness':'verified'}}
+        self.private={'outcome':'verified','reviewed_at':'today','notes':'PRIVATE NOTES','report_draft':{'body':'The submitted information was reviewed by our staff.','verdict':'verified'}}
+        self.key=patch.object(vault.settings,'ENCRYPTION_KEY',KEY);self.key.start();self.addCleanup(self.key.stop)
+        self.item={'id':'challenge','identity_intake_encrypted':vault.encrypt(DETAILS,SID),'identity_review_encrypted':vault.encrypt(self.private,SID)}
+        self.context=patch.object(api,'manual_report_context',AsyncMock(return_value=(self.store,self.row,self.item,self.private)))
+        self.context.start();self.addCleanup(self.context.stop)
+        self.store.get_one.return_value={'consumed_at':'today'};self.store.patch.return_value=[self.row]
+        self.video=patch.object(api,'evidence',AsyncMock(return_value={'id':'video'}));self.video.start();self.addCleanup(self.video.stop)
+
+    def test_draft_stays_encrypted_and_preserves_private_review(self):
+        r=self.client.put(f'/api/admin/screenings/{SID}/report-draft',json={'body':'A private unfinished draft.','verdict':'reviewed'})
+        self.assertEqual(r.status_code,200)
+        table,params,change=self.store.patch.await_args.args
+        self.assertEqual(table,'screening_private_evidence');self.assertIn('identity_review_encrypted',params)
+        self.assertNotIn('unfinished',str(change))
+        saved=vault.decrypt(change['identity_review_encrypted'],SID)
+        self.assertEqual(saved['notes'],'PRIVATE NOTES');self.assertEqual(saved['report_draft']['body'],'A private unfinished draft.')
+
+    def test_publish_copies_only_public_fields_and_completes(self):
+        r=self.client.post(f'/api/admin/screenings/{SID}/report-publish')
+        self.assertEqual(r.status_code,200)
+        table,params,change=self.store.patch.await_args.args
+        self.assertEqual(table,'screening_requests');self.assertEqual(change['status'],'complete')
+        self.assertEqual(change['credit_report']['verdict'],'verified')
+        self.assertNotIn('PRIVATE NOTES',str(change));self.assertNotIn(DETAILS['bvn'],str(change))
+        self.assertEqual(params['completed_at'],'is.null')
+
+    def test_verified_requires_explicit_verified_review_and_passed_video(self):
+        for outcome,video in [('reviewed','verified'),('verified','needs_review')]:
+            self.private['outcome']=outcome;self.row['check_status']['liveness']=video
+            self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,409)
+        self.store.patch.assert_not_awaited()
+
+    def test_publish_rejects_full_private_ids_birth_date_and_empty_text(self):
+        for text in ['Short', 'BVN: 111-111-111-11, reviewed by staff.', 'Birth date: 01/01/1990 was provided.']:
+            self.private['report_draft']['body']=text
+            self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,422)
+        self.store.patch.assert_not_awaited()
+
+    def test_duplicate_publish_is_idempotent_and_conflicts_are_rejected(self):
+        self.row.update(status='complete',credit_report={'type':'manual_staff_report',**self.private['report_draft'],'revision':1})
+        self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,200)
+        self.store.patch.assert_not_awaited()
+        self.private['report_draft']['body']='A changed report that needs a new revision.'
+        self.store.patch.return_value=[]
+        self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,409)
+
+    def test_staff_draft_response_is_not_cached(self):
+        r=self.client.get(f'/api/admin/screenings/{SID}/report-draft')
+        self.assertEqual(r.status_code,200);self.assertEqual(r.headers['cache-control'],'no-store')
+        self.assertNotIn('PRIVATE NOTES',r.text)

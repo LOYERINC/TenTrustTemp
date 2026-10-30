@@ -1,3 +1,7 @@
+# Staff-written manual reports
+
+See [MANUAL_REPORT_WORKFLOW.md](MANUAL_REPORT_WORKFLOW.md) for the payment → tenant intake → staff review → draft → publish → landlord PDF flow and release checklist.
+
 # TenTrust — current status and transfer handover
 
 **Updated: 26 October 2026.** Public rehearsal evidence was recorded at **16:38 UTC**. This README is the starting point for another developer, computer or Codex chat. It contains no passwords, API-key values or reusable sign-in/tenant tokens.
