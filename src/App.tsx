@@ -24,6 +24,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/auth/*" element={<AuthRoutes />} />
+          <Route path="/payments/*" element={<AuthRoutes />} />
           <Route path="/dashboard/*" element={<AuthRoutes />} />
           <Route path="/admin/*" element={<AuthRoutes />} />
           <Route path="/listings/*" element={<AuthRoutes />} />

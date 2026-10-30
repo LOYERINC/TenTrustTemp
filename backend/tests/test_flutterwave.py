@@ -117,7 +117,7 @@ class FlutterwaveVerificationTests(unittest.IsolatedAsyncioTestCase):
             "package_id": "standard", "payment_status": "unpaid", "intake_mode": "direct",
         }
         with (
-            patch.object(screenings, "authenticated_user_id", new=AsyncMock(return_value="landlord-1")),
+            patch.object(screenings, "authenticated_user", new=AsyncMock(return_value={"id":"landlord-1","email":"landlord@example.com"})),
             patch.object(screenings, "SupabaseStore", return_value=store),
             patch.object(screenings, "_owner_screening", new=AsyncMock(return_value=screening_row)),
             patch.object(screenings, "_public_package", return_value={"id": "standard", "price": 7000, "enabled": True}),

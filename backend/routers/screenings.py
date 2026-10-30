@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import logging
 import base64
+import json
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any, Dict, Literal, Optional
@@ -16,6 +17,8 @@ from config import settings
 from routers.mono import mono_service
 from services.scoring import calculate_readiness_score
 from services.screening_store import SupabaseStore, authenticated_user, authenticated_user_id, get_http_client, hash_token
+
+from services import payment_orders as orders
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Tenant Screenings"])
@@ -168,6 +171,8 @@ async def _payment_for_screening(store: SupabaseStore, screening_id: str) -> Opt
 
 async def _verify_payment(payment: Dict[str, Any], reference: str) -> Dict[str, Any]:
     provider = payment.get("provider", "paystack")
+    if provider == "paystack":
+        return await orders.verify_transaction(reference)
     started_at = perf_counter()
     try:
         client = get_http_client("provider")
@@ -220,6 +225,9 @@ async def _fulfill_payment(
         payment = await store.get_one("screening_payments", {"reference": f"eq.{reference}"})
     if not payment:
         raise HTTPException(status_code=404, detail="Payment reference not found.")
+    if payment.get("provider", "paystack") == "paystack":
+        await orders.apply_transaction(store, payment, transaction)
+        return await _owner_screening(store, payment["screening_id"], payment["landlord_id"])
     expected_package = PACKAGES[payment["package_id"]]
     if (
         transaction.get("provider", "paystack") != payment.get("provider", "paystack")
@@ -477,10 +485,13 @@ async def _issue_tenant_link(store: SupabaseStore, row: Dict[str, Any]) -> str:
 
 
 @router.post("/api/screenings/{screening_id}/checkout")
-async def initialize_checkout(screening_id: str, authorization: Optional[str] = Header(default=None)):
-    user_id = await authenticated_user_id(authorization)
+async def initialize_checkout(screening_id: str, authorization: Optional[str] = Header(default=None), request: Request = None):
+    user = await authenticated_user(authorization)
+    user_id = user["id"]
     store = SupabaseStore()
     row = await _owner_screening(store, screening_id, user_id)
+    if row["payment_status"] == "paid":
+        return {"status":"paid","screening_id":screening_id,"success_url":"/dashboard"}
     package = _public_package(row["package_id"])
     if not package["enabled"]:
         raise HTTPException(status_code=409, detail=package["unavailable_reason"] or "This package is not available.")
@@ -488,6 +499,9 @@ async def initialize_checkout(screening_id: str, authorization: Optional[str] = 
         return {"status": "paid", "screening_id": screening_id}
     if not row.get("landlord_email"):
         raise HTTPException(status_code=400, detail="A valid landlord email is required for payment receipts.")
+    provider = "paystack" if row["package_id"] == "identity" else settings.PAYMENT_PROVIDER.strip().lower()
+    if provider == "paystack":
+        return await orders.initialize(store, row, user, package, request.headers.get("origin") if request else None)
     existing = await _payment_for_screening(store, screening_id)
     if existing and existing["status"] == "pending":
         return {"status": "pending", "reference": existing["reference"], "authorization_url": existing.get("authorization_url")}
@@ -568,10 +582,15 @@ async def verify_checkout(screening_id: str, reference: str, authorization: Opti
     store = SupabaseStore()
     step_started_at = perf_counter()
     row = await _owner_screening(store, screening_id, user_id)
-    payment = await _payment_for_screening(store, screening_id)
+    payment = await store.get_one("screening_payments", {"reference":f"eq.{orders.reference(reference)}", "screening_id":f"eq.{screening_id}", "landlord_id":f"eq.{user_id}"})
     logger.info("[payment-timing] verify endpoint owner and payment reads elapsed_ms=%.1f", (perf_counter() - step_started_at) * 1000)
     if not payment or payment["reference"] != reference:
         raise HTTPException(status_code=404, detail="Payment reference not found.")
+    if payment.get("provider", "paystack") == "paystack" and payment["status"] != "paid":
+        payment = await orders.refresh_order(store, payment, force=True)
+        row = await _owner_screening(store, screening_id, user_id)
+        if payment["status"] != "paid":
+            return {**orders.public_status(payment), "payment_status":payment["status"]}
     if payment["status"] != "paid":
         transaction = await _verify_payment(payment, reference)
         if transaction.get("status") != "success":
@@ -581,7 +600,7 @@ async def verify_checkout(screening_id: str, reference: str, authorization: Opti
         row = await _fulfill_payment(store, reference, transaction, payment)
     else:
         logger.info("[payment-timing] verify endpoint skipped provider confirmation for paid payment")
-    result: Dict[str, Any] = {"status": row["status"], "payment_status": "paid", "screening_id": screening_id}
+    result: Dict[str, Any] = {"status": row["status"], "payment_status": "paid", "screening_id": screening_id, "intake_mode":row["intake_mode"]}
     if row["intake_mode"] == "tenant_link" and row["status"] != "complete":
         result["tenant_url"] = await _issue_tenant_link(store, row)
         result.update({
@@ -833,32 +852,106 @@ async def complete_public_screening(token: str, payload: ScreeningCompletion):
     return {"status": updated["status"], "score": updated.get("score"), "check_status": updated.get("check_status") or {}}
 
 
+@router.post("/api/paystack/webhook")
 @router.post("/api/payments/paystack/webhook")
 async def paystack_webhook(request: Request, x_paystack_signature: Optional[str] = Header(default=None, alias="x-paystack-signature")):
-    started_at = perf_counter()
     body = await request.body()
-    if not settings.PAYSTACK_SECRET_KEY or not x_paystack_signature:
-        raise HTTPException(status_code=401, detail="Invalid payment notification.")
+    if len(body) > 262144:
+        logger.warning("payment.webhook reference=- outcome=oversized")
+        raise HTTPException(413, "Notification too large.")
+    try:
+        event = json.loads(body)
+        if not isinstance(event, dict): raise ValueError()
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    except (ValueError, TypeError):
+        event, data = {}, {}
+    ref = data.get("reference")
+    safe_ref = ref if isinstance(ref,str) and orders.REFERENCE.fullmatch(ref) else "-"
+    logger.info("payment.webhook reference=%s outcome=received", safe_ref)
     expected = hmac.new(settings.PAYSTACK_SECRET_KEY.encode(), body, hashlib.sha512).hexdigest()
-    if not hmac.compare_digest(expected, x_paystack_signature):
-        raise HTTPException(status_code=401, detail="Invalid payment notification.")
-    event = await request.json()
-    if event.get("event") != "charge.success":
-        return {"received": True}
-    data = event.get("data") or {}
-    reference = data.get("reference")
-    if not reference:
-        return {"received": True}
+    if not settings.PAYSTACK_SECRET_KEY or not x_paystack_signature or not x_paystack_signature.isascii() or len(x_paystack_signature) != 128 or not hmac.compare_digest(expected, x_paystack_signature):
+        logger.warning("payment.webhook reference=%s outcome=signature_failure", safe_ref)
+        raise HTTPException(401, "Invalid payment notification.")
+    if not event:
+        raise HTTPException(400, "Invalid payment notification.")
+    if event.get("event") != "charge.success": return {"received":True}
+    orders.reference(ref)
     store = SupabaseStore()
-    payment = await store.get_one("screening_payments", {"reference": f"eq.{reference}"})
-    if not payment or payment["status"] == "paid":
-        return {"received": True}
-    if payment.get("provider", "paystack") != "paystack":
-        return {"received": True}
-    transaction = await _verify_payment(payment, reference)
-    await _fulfill_payment(store, reference, transaction, payment)
-    logger.info("[payment-timing] Paystack webhook complete elapsed_ms=%.1f", (perf_counter() - started_at) * 1000)
-    return {"received": True}
+    payment = await store.get_one("screening_payments", {"reference":f"eq.{ref}"})
+    if not payment or payment.get("provider", "paystack") != "paystack":
+        logger.warning("payment.webhook reference=%s outcome=unknown_order", ref)
+        return {"received":True}
+    if payment["status"] == "paid":
+        logger.info("payment.webhook reference=%s outcome=already_paid", ref)
+        return {"received":True}
+    if data.get("status") != "success": raise HTTPException(400, "Invalid successful payment notification.")
+    # Signed provider data is authoritative. Only the fast atomic DB transition runs here;
+    # no second provider call, biometric check, report generation, or email send.
+    await orders.apply_transaction(store, payment, {**data,"provider":"paystack"})
+    return {"received":True}
+
+
+class OrderCreate(BaseModel):
+    screening_id: str = Field(min_length=1,max_length=64)
+
+
+class PaymentRecovery(BaseModel):
+    reference: Optional[str] = Field(default=None,max_length=120)
+    email: Optional[str] = Field(default=None,max_length=254)
+
+
+async def _owned_order(store, ref, user_id):
+    row = await store.get_one("screening_payments", {"reference":f"eq.{orders.reference(ref)}","landlord_id":f"eq.{user_id}"})
+    if not row: raise HTTPException(404, "Payment reference not found for this account.")
+    return row
+
+
+@router.post("/api/orders")
+async def start_order(payload: OrderCreate, request: Request, authorization: Optional[str] = Header(default=None)):
+    return await initialize_checkout(payload.screening_id,authorization,request)
+
+
+@router.get("/api/orders/{reference}/status")
+async def order_status(reference: str, authorization: Optional[str] = Header(default=None)):
+    user_id = await authenticated_user_id(authorization)
+    store = SupabaseStore()
+    payment = await _owned_order(store,reference,user_id)
+    return orders.public_status(await orders.refresh_order(store,payment))
+
+
+@router.post("/api/orders/{reference}/retry")
+async def retry_order(reference: str, request: Request, authorization: Optional[str] = Header(default=None)):
+    user = await authenticated_user(authorization)
+    store = SupabaseStore()
+    payment = await _owned_order(store,reference,user["id"])
+    # A failed/abandoned local status is insufficient: verify with Paystack again.
+    payment = await orders.refresh_order(store,payment,force=True)
+    if payment["status"] not in ("failed","abandoned"):
+        return {**orders.public_status(payment),"return_url":orders.return_url(reference,request.headers.get("origin"))}
+    row = await _owner_screening(store,payment["screening_id"],user["id"])
+    package = _public_package(row["package_id"])
+    if not package["enabled"]: raise HTTPException(409,package["unavailable_reason"])
+    return await orders.initialize(store,row,user,package,request.headers.get("origin"))
+
+
+@router.post("/api/orders/recover")
+async def recover_orders(payload: PaymentRecovery, authorization: Optional[str] = Header(default=None)):
+    user = await authenticated_user(authorization)
+    store = SupabaseStore()
+    if payload.reference:
+        payments = [await _owned_order(store,payload.reference.strip(),user["id"])]
+    else:
+        if not payload.email or payload.email.strip().lower() != str(user.get("email","")).lower():
+            raise HTTPException(400,"Use the email address of your signed-in account, or enter your reference.")
+        payments = await store.request("GET","screening_payments",params={"landlord_id":f"eq.{user['id']}","provider":"eq.paystack","status":"in.(pending,failed,abandoned)","order":"created_at.desc","limit":"20","select":"*"})
+    recovered=[]
+    for payment in payments:
+        try:
+            recovered.append(orders.public_status(await orders.refresh_order(store,payment,force=True)))
+        except HTTPException as exc:
+            if exc.status_code != 503: raise
+            recovered.append({**orders.public_status(payment),"confirmation_pending":True})
+    return {"orders":recovered}
 
 
 @router.post("/api/payments/flutterwave/webhook")

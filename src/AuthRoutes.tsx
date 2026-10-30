@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { matchPath, useLocation } from 'react-router-dom';
+import { matchPath, Navigate, useLocation } from 'react-router-dom';
+import { readPaymentReference, paymentReturnPath } from './lib/paymentReturn';
 import { AuthProvider } from './context/AuthContext';
 
 const Auth = lazy(() => import('./pages/Auth'));
@@ -8,10 +9,19 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const AdminDashboard = lazy(() => import('./pages/AdminDemoOperations'));
 const Listings = lazy(() => import('./pages/Listings'));
 const KYCForm = lazy(() => import('./pages/KYCForm'));
+const PaymentReturn = lazy(() => import('./pages/PaymentReturn'));
+const PaymentRecovery = lazy(() => import('./pages/PaymentReturn').then(module => ({ default: module.PaymentRecovery })));
 
 export default function AuthRoutes() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const legacyReference = pathname === '/dashboard' ? readPaymentReference(search) : null;
+  const legacyQuery = new URLSearchParams(search);
+  if (pathname === '/dashboard' && (legacyQuery.has('reference') || legacyQuery.has('trxref'))) {
+    return <Navigate to={legacyReference ? paymentReturnPath(legacyReference) : '/payments/return'} replace/>;
+  }
   const Page = ['/auth/reset-password', '/auth/callback'].includes(pathname) ? AuthLink : pathname === '/auth' ? Auth
+    : pathname === '/payments/return' ? PaymentReturn
+    : pathname === '/payments/recover' ? PaymentRecovery
     : pathname === '/dashboard' ? Dashboard
     : pathname === '/admin' ? AdminDashboard
     : pathname === '/listings' ? Listings

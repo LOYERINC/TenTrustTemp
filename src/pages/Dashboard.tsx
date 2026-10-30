@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, Clock, FileText, LayoutDashboard, Plus, Search, UserRoundPlus, X } from '../lib/icons';
 import { useAuth } from '../context/AuthContext';
 import { Button, Logo, Container, Card, Input, Skeleton, StatCard, StatusChip, Toast, VerifiedBadge } from '../components/mvp-ui';
@@ -7,6 +7,7 @@ import SampleReportCard from '../components/SampleReportCard';
 import { siteConfig } from '../config';
 import { formatScreeningError, screeningApi, ScreeningPackage } from '../lib/screeningApi';
 import { redirectToPaymentCheckout } from '../lib/paymentCheckout';
+import { OrderStatus, paymentReturnPath } from '../lib/paymentReturn';
 import { formatNaira, toTitleCase } from '../utils/format.js';
 
 interface RequestRow {
@@ -18,6 +19,7 @@ type Filter = 'All'|'Pending'|'Completed';
 const nigeriaPhone = /^(?:\+234|234|0)[789][01]\d{8}$/;
 
 export default function Dashboard() {
+  const location=useLocation();
   const { user, logout, isLoading: authLoading } = useAuth(); const navigate = useNavigate();
   const [rows,setRows]=useState<RequestRow[]>([]); const [packageCatalog,setPackageCatalog]=useState<ScreeningPackage[]>([]);
   const [loading,setLoading]=useState(true); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
@@ -39,17 +41,23 @@ export default function Dashboard() {
     finally { setLoading(false); hasCompletedInitialLoad.current=true; }
   },[]);
 
-  useEffect(()=>{ if(authLoading)return; if(!user){navigate('/auth');return;} void refresh(); },[user,authLoading,navigate,refresh]);
+  useEffect(()=>{ if(authLoading)return; if(!user){navigate('/auth?returnTo='+encodeURIComponent(location.pathname+location.search));return;} void refresh(); },[user,authLoading,navigate,refresh,location.pathname,location.search]);
   useEffect(()=>{const timer=window.setInterval(()=>void refresh(),20000);return()=>window.clearInterval(timer);},[refresh]);
   useEffect(()=>{
-    const query=new URLSearchParams(window.location.search); const id=query.get('screening'); const reference=query.get('reference')||query.get('trxref')||query.get('tx_ref');
+    if(authLoading || !user)return;
+    const query=new URLSearchParams(window.location.search); const id=query.get('screening'); const reference=query.get('paid_reference')||query.get('reference')||query.get('trxref')||query.get('tx_ref');
     if(!id||!reference)return;
     let cancelled=false;
     setPaymentConfirming(true);
     void (async()=>{
       try {
-        const result=await screeningApi<{tenant_url?:string;payment_status?:string}>(`/api/screenings/${encodeURIComponent(id)}/verify-payment?reference=${encodeURIComponent(reference)}`,{method:'POST'});
+        const result=await screeningApi<{tenant_url?:string;payment_status?:string;status?:string;intake_mode?:string}>(`/api/screenings/${encodeURIComponent(id)}/verify-payment?reference=${encodeURIComponent(reference)}`,{method:'POST'});
         if(cancelled)return;
+        if(result.payment_status!=='paid'){navigate(paymentReturnPath(reference),{replace:true});return;}
+        if(result.status==='complete' || result.intake_mode==='direct'){
+          if(result.status==='complete')setReport(await screeningApi<ReportRow>(`/api/screenings/${encodeURIComponent(id)}`));
+          const clean=new URL(window.location.href);['screening','paid_reference','reference','trxref','tx_ref','tab'].forEach(key=>clean.searchParams.delete(key));window.history.replaceState({},'',clean);void refresh();return;
+        }
         let link=result.tenant_url;
         if(!link&&result.payment_status==='paid'){
           const issued=await screeningApi<{tenant_url:string}>(`/api/screenings/${encodeURIComponent(id)}/tenant-link`,{method:'POST'});
@@ -60,12 +68,12 @@ export default function Dashboard() {
         setTenantLink(link);
         setPaymentConfirming(false);
         void refresh();
-        const clean=new URL(window.location.href);clean.searchParams.delete('screening');clean.searchParams.delete('reference');clean.searchParams.delete('trxref');clean.searchParams.delete('tx_ref');clean.searchParams.delete('tab');window.history.replaceState({},'',clean);
+        const clean=new URL(window.location.href);clean.searchParams.delete('screening');clean.searchParams.delete('paid_reference');clean.searchParams.delete('reference');clean.searchParams.delete('trxref');clean.searchParams.delete('tx_ref');clean.searchParams.delete('tab');window.history.replaceState({},'',clean);
       } catch(e) { if(!cancelled)setError(formatScreeningError(e)); }
       finally { if(!cancelled)setPaymentConfirming(false); }
     })();
     return ()=>{cancelled=true;};
-  },[refresh]);
+  },[refresh,user?.id,authLoading,navigate]);
   useEffect(()=>{
     const reportId=new URLSearchParams(window.location.search).get('report');if(!reportId)return;
     let cancelled=false;setBusy(true);
@@ -108,8 +116,10 @@ export default function Dashboard() {
       if(!selectedTier?.enabled){setFieldError('Choose an available verification package.');setBusy(false);return;}
       // The tier and displayed quote travel with the request; checkout amount remains server-authoritative.
       const created=await screeningApi<{screening_id:string}>('/api/screenings',{method:'POST',body:JSON.stringify({package_id:selectedTier.id,client_price_quote:selectedTier.price,intake_mode:'tenant_link',tenant_name:name,tenant_phone:phone,property_title:String(form.get('property_title')||'Rental application').trim()||'Rental application',monthly_rent:form.get('rent_amount')?Number(form.get('rent_amount')):null})});
-      const checkout=await screeningApi<{authorization_url:string}>(`/api/screenings/${encodeURIComponent(created.screening_id)}/checkout`,{method:'POST'});
-      redirectToPaymentCheckout(checkout.authorization_url);
+      const checkout=await screeningApi<OrderStatus>(`/api/screenings/${encodeURIComponent(created.screening_id)}/checkout`,{method:'POST'});
+      if(checkout.status==='paid'){navigate(checkout.success_url||'/dashboard');}
+      else if(checkout.authorization_url)redirectToPaymentCheckout(checkout.authorization_url);
+      else navigate(paymentReturnPath(checkout.reference));
     }catch(e){setError(formatScreeningError(e));setBusy(false);}
   };
 
@@ -136,7 +146,7 @@ export default function Dashboard() {
       <nav className={`dashboard-links${menuOpen?' is-open':''}`} aria-label="Dashboard navigation"><Link to="/dashboard" aria-current="page"><LayoutDashboard size={17}/>Dashboard</Link><a href="#verifications" onClick={()=>setMenuOpen(false)}>Verifications</a><Link to="/pricing">Pricing</Link>{whatsappNumber&&<a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer">Help</a>}</nav>
       <div className="dashboard-account"><Button aria-label="New verification" className="dashboard-header-cta" onClick={()=>requestButton()}><Plus size={18} aria-hidden="true"/><span>New verification</span></Button><div className="dashboard-avatar-wrap"><button type="button" className="dashboard-avatar" aria-label="Open account menu" aria-expanded={avatarOpen} onClick={()=>setAvatarOpen(v=>!v)}>{initials}</button>{avatarOpen&&<div className="dashboard-dropdown"><Link to="/auth">Profile</Link><Link to="/pricing">Billing</Link><button type="button" onClick={async()=>{await logout();navigate('/');}}>Log out</button></div>}</div><button className="dashboard-menu-toggle" type="button" aria-label={menuOpen?'Close navigation':'Open navigation'} aria-expanded={menuOpen} onClick={()=>setMenuOpen(v=>!v)}><span/><span/><span/></button></div>
     </Container></header>
-    <Container as="main" className="dashboard-main"><div className="dashboard-heading"><div><h1>Hello, {toTitleCase(user?.firstName||'there')}</h1><p>Here's where your tenant checks live.</p></div></div>
+    <Container as="main" className="dashboard-main"><div className="dashboard-heading"><div><h1>Hello, {toTitleCase(user?.firstName||'there')}</h1><p>Here's where your tenant checks live.</p><Link className="text-sm font-semibold text-blue-800 underline" to="/payments/recover">I've paid but it didn't work</Link></div></div>
       {error&&<div className="dashboard-error" role="alert"><AlertCircle size={20}/><p>{error}</p><button type="button" onClick={()=>void refresh()}>Retry</button><button className="dashboard-error-dismiss" type="button" aria-label="Dismiss error" onClick={()=>setError('')}><X size={18}/></button></div>}
       <div className="dashboard-stats"><StatCard label="Total requests" value={rows.length} icon={<FileText size={21}/>}/><StatCard label="Pending" value={pending} icon={<Clock size={21}/>}/><StatCard label="Completed" value={completed} icon={<CheckCircle2 size={21}/>}/></div>
       <section className="dashboard-verifications" id="verifications" aria-labelledby="requests-title"><div className="dashboard-list-heading"><div><h2 id="requests-title">Verifications</h2></div><label className={`dashboard-search${rows.length===0?' is-disabled':''}`}><Search size={18}/><span className="sr-only">Search verifications</span><input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search tenants or properties" disabled={rows.length===0} aria-disabled={rows.length===0}/></label></div>
