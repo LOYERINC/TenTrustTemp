@@ -127,6 +127,7 @@ export default function Landing() {
               <div className="tt-v2-actions">
                 <Link className="tt-button tt-button-primary" to="/auth?action=verify">Check a tenant <ArrowRight size={18} aria-hidden="true"/></Link>
               </div>
+              {siteConfig.ndpcRegistered && <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginTop:22}}><a href="https://ndpc.gov.ng/" target="_blank" rel="noopener noreferrer" aria-label="Nigeria Data Protection Commission"><img src="/brand/ndpc-logo.png" alt="Nigeria Data Protection Commission" style={{width:124,height:'auto',background:'#fff',padding:8,borderRadius:6}}/></a><span style={{display:'inline-flex',alignItems:'center',gap:6,fontSize:14,fontWeight:600,color:'#166534'}}><ShieldCheck size={18} aria-hidden="true"/>NDPC certified</span></div>}
               <div className="tt-hero-mobile-sample"><SampleReportCard compact checks={sampleChecks}/></div>
               <div className="tt-v2-price" aria-label="Pricing and turnaround">
                 <span>{priceLabel ? `From ${priceLabel} per check` : 'Price coming soon'}</span>
@@ -195,7 +196,7 @@ export default function Landing() {
             <article><span className="tt-icon-tile" aria-hidden="true"><Lock/></span><div><h3>ID numbers stay private</h3><p>The report hides the full BVN and NIN numbers.</p></div></article>
             <article><span className="tt-icon-tile" aria-hidden="true"><ShieldCheck/></span><div><h3>We take care</h3><p>{siteConfig.ndpaConfirmed ? 'Aligned with the Nigeria Data Protection Act.' : 'We build with Nigeria’s data rules in mind.'}</p></div></article>
           </div>
-          {siteConfig.ndpcRegistered && <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',marginTop:28}}><a href="https://ndpc.gov.ng/" target="_blank" rel="noopener noreferrer" aria-label="Nigeria Data Protection Commission"><img src="/brand/ndpc-logo.png" alt="Nigeria Data Protection Commission (NDPC)" loading="lazy" style={{width:160,maxWidth:'100%',height:'auto',background:'#fff',padding:12,borderRadius:8}}/></a><span>NDPC registered</span></div>}<p className="tt-privacy-outcome">You see the result. Full ID numbers stay hidden.</p>
+          {siteConfig.ndpcRegistered && <div style={{display:'flex',alignItems:'center',gap:16,flexWrap:'wrap',marginTop:28}}><a href="https://ndpc.gov.ng/" target="_blank" rel="noopener noreferrer" aria-label="Nigeria Data Protection Commission"><img src="/brand/ndpc-logo.png" alt="Nigeria Data Protection Commission (NDPC)" loading="lazy" style={{width:160,maxWidth:'100%',height:'auto',background:'#fff',padding:12,borderRadius:8}}/></a><span>NDPC certified</span></div>}<p className="tt-privacy-outcome">You see the result. Full ID numbers stay hidden.</p>
           <Link to="/privacy" className="tt-light-link">Read how we use your data <ArrowRight size={16} aria-hidden="true"/></Link>
         </Container>
       </section>
