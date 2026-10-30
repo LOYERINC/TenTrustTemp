@@ -56,7 +56,7 @@ export default function PaymentReturn() {
   const needsLogin=!isLoading && (!user || state==='login');
   return <Shell>
     <h1 className="mb-4 text-2xl font-bold">{needsLogin?'Log in to view your result':'Confirming your payment'}</h1>
-    {!reference?<><p>The payment reference is missing or invalid.</p><Link className={button+' mt-5'} to="/payments/recover">I've paid but it didn't work</Link></>
+    {!reference?<><p>The payment reference is missing or invalid.</p><a className={button+' mt-5'} href="mailto:contact@tentrust.com.ng?subject=Payment%20support">Contact support</a></>
       :isLoading?<p role="status">Loading your account…</p>
       :needsLogin?<><p>Your payment can still be confirmed while you are signed out. Log in to view your result.</p><Link className={button+' mt-5'} to={login}>Log in to view your result</Link></>
       :<>
@@ -68,7 +68,7 @@ export default function PaymentReturn() {
         {['pending','failed','abandoned'].includes(state)&&<button type="button" className={button+' mt-5'} disabled={busy} onClick={()=>void retry()}>{busy?'Rechecking…':state==='pending'?'Check again':'Retry payment'}</button>}
       </>}
     {reference&&<p className="mt-5 break-all text-sm text-slate-600">Payment reference: <strong>{reference}</strong></p>}
-    <div className="mt-6 flex flex-wrap gap-5 text-sm font-semibold text-blue-800"><a href={'mailto:contact@tentrust.com.ng?'+new URLSearchParams({subject:'Payment help: '+(reference||'missing reference'),body:'Please help confirm my payment. Reference: '+(reference||'unknown')})}>Contact support</a><Link to="/payments/recover">I've paid but it didn't work</Link></div>
+    <div className="mt-6 flex flex-wrap gap-5 text-sm font-semibold text-blue-800"><a href={'mailto:contact@tentrust.com.ng?'+new URLSearchParams({subject:'Payment help: '+(reference||'missing reference'),body:'Please help confirm my payment. Reference: '+(reference||'unknown')})}>Contact support</a></div>
   </Shell>;
 }
 
