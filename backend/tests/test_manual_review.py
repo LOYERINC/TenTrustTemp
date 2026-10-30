@@ -198,7 +198,7 @@ class ReportTests(unittest.TestCase):
         self.store.patch.assert_not_awaited()
 
     def test_publish_rejects_full_private_ids_birth_date_and_empty_text(self):
-        for text in ['Short', 'BVN: 111-111-111-11, reviewed by staff.', 'Birth date: 01/01/1990 was provided.']:
+        for text in ['   ', 'BVN: 111-111-111-11, reviewed by staff.', 'Birth date: 01/01/1990 was provided.']:
             self.private['report_draft']['body']=text
             self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,422)
         self.store.patch.assert_not_awaited()
@@ -215,3 +215,8 @@ class ReportTests(unittest.TestCase):
         r=self.client.get(f'/api/admin/screenings/{SID}/report-draft')
         self.assertEqual(r.status_code,200);self.assertEqual(r.headers['cache-control'],'no-store')
         self.assertNotIn('PRIVATE NOTES',r.text)
+
+
+    def test_short_report_can_be_published_without_minimum_length(self):
+        self.private['report_draft']['body']='Verified.'
+        self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,200)

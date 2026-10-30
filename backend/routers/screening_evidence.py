@@ -308,7 +308,7 @@ def validate_public_report(body, intake):
         day = datetime.strptime(dob, "%Y-%m-%d")
         forms = (dob, day.strftime("%d/%m/%Y"), day.strftime("%d-%m-%Y"), day.strftime("%m/%d/%Y"))
         if any(value in body for value in forms): raise HTTPException(422, "Remove the tenant's date of birth from the landlord report.")
-    if len(body.strip()) < 20: raise HTTPException(422, "Write a report of at least 20 characters before publishing.")
+    if not body.strip(): raise HTTPException(422, "Enter report text before publishing.")
 
 
 @router.post("/api/admin/screenings/{screening_id}/report-publish")
