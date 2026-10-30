@@ -106,3 +106,9 @@ html { scroll-padding-top: 96px; }
 .custom-package-builder { max-width: 720px; padding: 24px; margin-block: 40px; border: 1px solid #bfd9e8; border-radius: 20px; background: #fff; scroll-margin-top: 96px; }
 .custom-package-builder textarea { border: 1px solid #8bc7e6; min-height: 100px; border-radius: 8px; padding: 12px; }
 @media(max-width:760px){ .product-plans { grid-template-columns: minmax(0,1fr); gap:24px; } .statement-dialog-actions .tt-button { width:100%; } }
+
+.manual-identity-review { display: grid; gap: 14px; margin-block: 20px; padding: 20px; border: 1px solid #bfd9e8; border-radius: 14px; }
+.manual-identity-review label { display: grid; gap: 8px; }
+.manual-identity-review dl { display: grid; grid-template-columns: minmax(90px,1fr) 2fr; gap: 10px; }
+.manual-identity-review dd { margin: 0; overflow-wrap: anywhere; }
+.manual-identity-review textarea { width: 100%; min-height: 100px; padding: 12px; border: 1px solid #bfd9e8; border-radius: 10px; }

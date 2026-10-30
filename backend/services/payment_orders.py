@@ -119,6 +119,14 @@ def public_status(order):
 
 
 async def initialize(store, screening, user, package, origin=None):
+    from services.manual_identity import manual_case, encryption_key
+    if manual_case(screening) and screening.get('payment_status') != 'paid':
+        encryption_key()
+        try:
+            await store.request('GET', 'screening_private_evidence', params={
+                'select':'identity_intake_encrypted,identity_intake_at,identity_review_encrypted', 'limit':'0'})
+        except Exception:
+            raise HTTPException(503, 'Manual review storage setup is incomplete. No charge was created.') from None
     ref = f'tt_{uuid4().hex}'
     callback = return_url(ref, origin)  # Validate before creating an order.
     result = await store.rpc('reserve_paystack_order', {

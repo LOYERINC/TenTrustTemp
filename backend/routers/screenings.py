@@ -20,6 +20,7 @@ from services.screening_store import SupabaseStore, authenticated_user, authenti
 
 from services.package_policy import NEW_PACKAGES, statement_required
 from services import payment_orders as orders
+from services.manual_identity import manual_case, consent_version, encryption_ready
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Tenant Screenings"])
@@ -51,6 +52,7 @@ class ScreeningCreate(BaseModel):
     rental_reference: bool = False
     landlord_confirms_consent: bool = False
     use_bundle_credit: bool = False
+    manual_review_acknowledged: bool = False
 
     @model_validator(mode="after")
     def validate_payment_history(self):
@@ -118,8 +120,11 @@ def _package_availability(package_id: str) -> tuple[bool, list[str]]:
         missing = []
         if package_id == "custom_v2": return False, ["Choose your checks and request a quote."]
         if not settings.SCREENING_V2_ENABLED: missing.append("The new tenant flow is being set up.")
-        if not settings.MONO_IDENTITY_CHECKS_ENABLED or not settings.MONO_SECRET_KEY: missing.append("ID checks are not configured.")
-        if settings.PAYSTACK_SECRET_KEY.startswith("sk_live_") and not settings.MONO_SECRET_KEY.startswith("live_sk_"):
+        manual = settings.SCREENING_IDENTITY_MODE == "manual"
+        if manual and package_id == "intermediate_v2": missing.append("Bureau credit checks are awaiting provider approval.")
+        if manual and not encryption_ready(): missing.append("Private manual review storage is not configured.")
+        if not manual and (not settings.MONO_IDENTITY_CHECKS_ENABLED or not settings.MONO_SECRET_KEY): missing.append("ID checks are not configured.")
+        if not manual and settings.PAYSTACK_SECRET_KEY.startswith("sk_live_") and not settings.MONO_SECRET_KEY.startswith("live_sk_"):
             missing.append("Live ID checks must be configured before accepting real payments.")
         if package_id == "intermediate_v2" and not settings.MONO_CREDIT_CHECKS_ENABLED: missing.append("Credit checks are not configured.")
         if not settings.PAYSTACK_SECRET_KEY: missing.append("Payments are not configured.")
@@ -166,7 +171,8 @@ def _public_package(package_id: str) -> Dict[str, Any]:
     package = PACKAGES[package_id]
     enabled, reasons = _package_availability(package_id)
     if package_id in NEW_PACKAGES:
-        return {**package, "enabled": enabled, "unavailable_reason": "; ".join(reasons) if reasons else None}
+        manual = settings.SCREENING_IDENTITY_MODE == "manual" and package_id == "basic_v2"
+        return {**package, "checks": ["manual_identity", "liveness", "report"] if manual else package["checks"], "description": "Staff review your submitted ID details and video. No automated BVN/NIN validation." if manual else package["description"], "verification_mode": "manual" if manual else "mono", "enabled": enabled, "unavailable_reason": "; ".join(reasons) if reasons else None}
     description = {
         "identity": "One consent-based identity check. Your tenant enters their ID details in private.",
         "basic": "A score based on rent and income.",
@@ -416,6 +422,8 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
         raise HTTPException(status_code=422, detail="Choose a valid screening package.")
     if payload.package_id in NEW_PACKAGES and payload.intake_mode != "tenant_link":
         raise HTTPException(status_code=422, detail="These packages require the tenant’s private link.")
+    if settings.SCREENING_IDENTITY_MODE == "manual" and payload.package_id == "basic_v2" and not payload.manual_review_acknowledged:
+        raise HTTPException(status_code=422, detail="Basic currently uses manual staff review, without automated BVN/NIN checks. Refresh the page and agree to this service before paying.")
     package = _public_package(payload.package_id)
     if not package["enabled"]:
         raise HTTPException(status_code=409, detail=package["unavailable_reason"] or "This package is not available.")
@@ -444,6 +452,7 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
         "rental_reference": payload.rental_reference,
         "status": "draft",
         "payment_status": "unpaid",
+        "check_status": {"identity_method": "manual_review", "identity": "pending_submission"} if settings.SCREENING_IDENTITY_MODE == "manual" and payload.package_id == "basic_v2" else {},
     })
     if payload.intake_mode == "direct":
         await store.insert("screening_consents", {
@@ -746,13 +755,13 @@ async def capture_public_screening_consent(token: str, payload: TenantConsentCap
         raise HTTPException(status_code=404, detail="This tenant link has already been used or is unavailable.")
     existing = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
     new_flow = row["package_id"] in NEW_PACKAGES
-    version = settings.SCREENING_V2_CONSENT_VERSION if new_flow else settings.IDENTITY_CONSENT_VERSION
+    version = consent_version(row) if new_flow else settings.IDENTITY_CONSENT_VERSION
     consent_data = {
             "screening_id": row["id"],
             "landlord_id": row["landlord_id"],
             "method": "tenant_direct_consent",
             "consented_as": row["tenant_name"],
-            "purpose": ("BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
+            "purpose": ("Staff manually review your submitted name, BVN, NIN, date of birth and video. No automated BVN/NIN or bureau credit lookup is performed. Your landlord receives only the manual review result." if manual_case(row) else "BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
             "version": version,
             "collected_at": datetime.now(timezone.utc).isoformat(),
         }

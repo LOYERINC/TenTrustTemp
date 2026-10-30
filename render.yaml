@@ -10,7 +10,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
-        value: demo
+        value: production
       - key: PAYMENT_PROVIDER
         value: paystack
       - key: HOST
@@ -33,10 +33,12 @@ services:
         value: https://www.tentrust.com.ng
       - key: ALLOWED_ORIGINS
         value: "https://www.tentrust.com.ng,https://tentrust.com.ng,https://ten-trust.vercel.app"
+      - key: SCREENING_IDENTITY_MODE
+        value: manual
       - key: SCREENING_V2_ENABLED
-        value: "false"
+        value: "true"
       - key: SCREENING_PRICES_CONFIRMED
-        value: "false"
+        value: "true"
       - key: SCREENING_CONSENT_VERSION
         value: "2026-10-02"
       - key: MONO_SECRET_KEY
@@ -48,7 +50,7 @@ services:
       - key: MONO_WEBHOOK_SECRET
         sync: false
       - key: MONO_IDENTITY_CHECKS_ENABLED
-        value: "true"
+        value: "false"
       - key: MONO_CREDIT_CHECKS_ENABLED
         value: "false"
       - key: FLW_SECRET_KEY

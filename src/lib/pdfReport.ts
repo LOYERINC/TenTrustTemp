@@ -10,23 +10,25 @@ function escapePdf(text: string) { return text.replaceAll('\u2022', '*').normali
 export function downloadIdentityReport(report: IdentityReport) {
   const date = report.identity_verified_at ? new Date(report.identity_verified_at).toLocaleString() : new Date().toLocaleString();
   const newFlow = report.check_status?.liveness !== undefined;
-  const needsReview = report.check_status?.liveness === 'needs_review' || report.check_status?.credit_result === 'needs_review' || report.check_status?.affordability === 'review' || Boolean(report.name_match && report.name_match !== 'match');
+  const manual = report.check_status?.identity_method === 'manual_review';
+  const needsReview = report.check_status?.identity === 'needs_review' || report.check_status?.liveness === 'needs_review' || report.check_status?.credit_result === 'needs_review' || report.check_status?.affordability === 'review' || Boolean(report.name_match && report.name_match !== 'match');
   const verified = report.status === 'complete';
   const sandbox = report.check_status?.environment
     ? report.check_status.environment !== 'production'
     : import.meta.env.VITE_DEMO_MODE === 'true';
   const lines = [
     { text: 'TenTrust', size: 22, y: 748, color: '0.11 0.31 0.85' },
-    { text: sandbox ? 'SANDBOX DEMO - SAMPLE REPORT' : newFlow ? 'TENANT SCREENING REPORT' : 'IDENTITY VERIFICATION REPORT', size: 11, y: 714, color: '0.39 0.45 0.55' },
+    { text: sandbox ? 'SANDBOX DEMO - SAMPLE REPORT' : manual ? 'MANUAL TENANT REVIEW REPORT' : newFlow ? 'TENANT SCREENING REPORT' : 'IDENTITY VERIFICATION REPORT', size: 11, y: 714, color: '0.39 0.45 0.55' },
     { text: `Report ID: ${report.report_id || 'Pending'}`, size: 11, y: 685, color: '0.06 0.09 0.16' },
     { text: `Date: ${date}`, size: 11, y: 666, color: '0.06 0.09 0.16' },
-    { text: verified ? newFlow ? needsReview ? 'Screening complete - needs review' : 'Screening report ready - review results' : sandbox ? 'Sandbox identity check complete' : 'Identity verified' : 'Could not verify', size: 20, y: 616, color: verified && !needsReview ? '0.09 0.45 0.23' : '0.72 0.38 0.03' },
+    { text: verified ? newFlow ? needsReview ? 'Screening complete - needs review' : manual ? 'Manual review complete - read staff findings' : 'Screening report ready - review results' : sandbox ? 'Sandbox identity check complete' : 'Identity verified' : 'Could not verify', size: 20, y: 616, color: verified && !needsReview ? '0.09 0.45 0.23' : '0.72 0.38 0.03' },
     { text: `Tenant: ${report.tenant_name}`, size: 12, y: 570, color: '0.06 0.09 0.16' },
     { text: `Property: ${report.property_title}`, size: 12, y: 546, color: '0.06 0.09 0.16' },
     { text: `Name match: ${report.name_match || 'Not available'}`, size: 12, y: 522, color: '0.06 0.09 0.16' },
     { text: `Document: ${report.masked_document || 'Not available'}`, size: 12, y: 498, color: '0.06 0.09 0.16' },
     ...(['identity', 'liveness', 'credit_bureau', 'credit_result', 'affordability'] as const).filter(key=>report.check_status?.[key]).map((key,index)=>({text: `${key.replaceAll('_',' ')}: ${report.check_status![key].replaceAll('_',' ')}`,size:12,y:460-index*24,color:'0.06 0.09 0.16'})),
-    { text: sandbox ? 'DEMO DATA ONLY. This does not verify a real person or support a rental decision.' : 'This report supports a landlord review. It is not a rental decision.', size: 10, y: 70, color: '0.39 0.45 0.55' },
+    { text: sandbox ? 'DEMO DATA ONLY. This does not verify a real person or support a rental decision.' : manual ? 'Manual review of tenant-submitted details. No automated ID or bureau checks.' : 'This report supports a landlord review. It is not a rental decision.', size: 10, y: 70, color: '0.39 0.45 0.55' },
+    ...(manual ? [{text:'This report supports human review. It is not a rental decision.',size:10,y:55,color:'0.39 0.45 0.55'}] : []),
   ];
   const stream = ['0.11 0.31 0.85 rg 0 792 612 9 re f', ...lines.map(l => `BT /F1 ${l.size} Tf ${l.color} rg 50 ${l.y} Td (${escapePdf(l.text)}) Tj ET`)].join('\n');
   const objects = [
