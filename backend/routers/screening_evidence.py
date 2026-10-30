@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from uuid import uuid4, UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Header
+from fastapi.responses import JSONResponse
+from typing import Literal
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
@@ -16,6 +18,7 @@ from routers.mono import mono_service
 from routers.screenings import _tenant_rate_limit
 from services.package_policy import NEW_PACKAGES, statement_required
 from services.screening_store import SupabaseStore, get_http_client, hash_token, authenticated_user
+from services.manual_identity import manual_case, consent_version, encrypt, decrypt
 
 router = APIRouter(tags=["Private screening evidence"])
 BUCKET = "screening-private-evidence"
@@ -38,12 +41,18 @@ async def session(token, request, require_consent=True):
         raise HTTPException(409, "This screening is not available.")
     if not settings.SCREENING_V2_ENABLED: raise HTTPException(503, "The new screening flow is being set up.")
     if require_consent:
-        consent = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent", "version": f"eq.{settings.SCREENING_V2_CONSENT_VERSION}"})
+        consent = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent", "version": f"eq.{consent_version(row)}"})
         if not consent: raise HTTPException(403, "Please read and agree to the checks first.")
     return store, link, row
 
 async def evidence(store, screening_id, kind):
     return await store.get_one("screening_private_evidence", {"screening_id": f"eq.{screening_id}", "kind": f"eq.{kind}"})
+
+async def identity_ready(store, row):
+    if not manual_case(row):
+        return bool(row.get("identity_verified_at"))
+    item = await evidence(store, row["id"], "challenge")
+    return bool(item and item.get("identity_intake_encrypted") and item.get("identity_intake_at"))
 
 @router.get("/api/public/screenings/{token}/steps")
 async def steps(token: str, request: Request):
@@ -55,9 +64,10 @@ async def steps(token: str, request: Request):
         if not challenge: raise HTTPException(503, "Your screening steps could not load. Please try again.")
     video = await evidence(store, row["id"], "liveness")
     statement = await evidence(store, row["id"], "statement")
-    return {"identity_done": bool(row.get("identity_verified_at")), "statement_required": statement_required(row["package_id"], row.get("monthly_rent")), "challenge": challenge["challenge"], "liveness_uploaded": bool(video), "statement_uploaded": bool(statement)}
+    return {"identity_done": bool(challenge.get("identity_intake_at")) if manual_case(row) else bool(row.get("identity_verified_at")), "verification_mode": "manual" if manual_case(row) else "mono", "statement_required": statement_required(row["package_id"], row.get("monthly_rent")), "challenge": challenge["challenge"], "liveness_uploaded": bool(video), "statement_uploaded": bool(statement)}
 
 class Identity(BaseModel):
+    full_name: str | None = Field(default=None, max_length=160)
     bvn: str = Field(pattern=r"^[0-9]{11}$")
     nin: str = Field(pattern=r"^[0-9]{11}$")
     date_of_birth: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
@@ -66,6 +76,22 @@ class Identity(BaseModel):
 async def identity(token: str, payload: Identity, request: Request):
     store, _, row = await session(token, request)
     if row.get("identity_verified_at"): raise HTTPException(409, "Your ID check is already done. Continue to liveness.")
+    if manual_case(row):
+        if row["package_id"] != "basic_v2": raise HTTPException(409, "Credit checks are awaiting provider approval.")
+        if not payload.full_name or len(payload.full_name.strip()) < 2: raise HTTPException(422, "Enter your full name.")
+        try:
+            dob = datetime.strptime(payload.date_of_birth, "%Y-%m-%d").date()
+            if dob > datetime.now(timezone.utc).date(): raise ValueError()
+        except ValueError: raise HTTPException(422, "Enter a valid date of birth.")
+        challenge = await evidence(store, row["id"], "challenge")
+        if not challenge: raise HTTPException(409, "Load your screening steps first.")
+        encrypted = encrypt({"full_name": payload.full_name.strip(), "bvn": payload.bvn, "nin": payload.nin, "date_of_birth": payload.date_of_birth}, row["id"])
+        saved = await store.patch("screening_private_evidence", {"id": f"eq.{challenge['id']}", "identity_intake_encrypted": "is.null"}, {"identity_intake_encrypted": encrypted, "identity_intake_at": stamp()})
+        if not saved: raise HTTPException(409, "Your ID details were already submitted.")
+        checks = dict(row.get("check_status") or {})
+        checks.update({"identity_method": "manual_review", "identity": "pending_review", "environment": "sandbox" if settings.PAYSTACK_SECRET_KEY.startswith("sk_test_") or settings.ENVIRONMENT == "demo" else "production"})
+        await store.patch("screening_requests", {"id": f"eq.{row['id']}"}, {"check_status": checks, "masked_document": "ID details held privately"})
+        return {"identity_done": True, "status": "pending_review", "verified": False}
     if not settings.MONO_IDENTITY_CHECKS_ENABLED: raise HTTPException(503, "ID checks are not ready. Please try later.")
     try: datetime.strptime(payload.date_of_birth, "%Y-%m-%d")
     except ValueError: raise HTTPException(422, "Enter a valid date of birth.")
@@ -101,7 +127,7 @@ def validate_pdf(body):
 async def upload(token: str, kind: str, request: Request):
     store, _, row = await session(token, request)
     if kind not in ("statement", "liveness"): raise HTTPException(404, "Unknown upload.")
-    if not row.get("identity_verified_at"): raise HTTPException(409, "Finish your ID check first.")
+    if not await identity_ready(store, row): raise HTTPException(409, "Send your ID details first.")
     if kind == "statement" and not statement_required(row["package_id"], row.get("monthly_rent")):
         raise HTTPException(409, "A bank statement is not required for this screening.")
     if await evidence(store, row["id"], kind): raise HTTPException(409, "This file is already uploaded.")
@@ -135,7 +161,8 @@ class CreditInput(BaseModel):
 @router.post("/api/public/screenings/{token}/steps/submit")
 async def submit(token: str, payload: CreditInput, request: Request):
     store, link, row = await session(token, request)
-    if not row.get("identity_verified_at"): raise HTTPException(409, "Finish your ID check first.")
+    if not await identity_ready(store, row): raise HTTPException(409, "Send your ID details first.")
+    if manual_case(row) and row["package_id"] != "basic_v2": raise HTTPException(409, "Credit checks are awaiting provider approval.")
     if not await evidence(store, row["id"], "liveness"): raise HTTPException(422, "Upload your liveness video before you continue.")
     if statement_required(row["package_id"], row.get("monthly_rent")) and not await evidence(store, row["id"], "statement"):
         raise HTTPException(422, "Upload your last 3 months of bank statements before you continue.")
@@ -175,12 +202,28 @@ async def staff_file(evidence_id: UUID, user=Depends(require_admin)):
 
 @router.get("/api/admin/screenings/{screening_id}/evidence")
 async def staff_list(screening_id: UUID, user=Depends(require_admin)):
-    return {"items": await SupabaseStore().request("GET", "screening_private_evidence", params={"screening_id": f"eq.{screening_id}", "select": "id,kind,challenge,decision,media_type,created_at"})}
+    store = SupabaseStore()
+    row = await store.get_one("screening_requests", {"id": f"eq.{screening_id}"})
+    if not row: raise HTTPException(404, "Screening not found.")
+    return {"manual_review": manual_case(row), "items": await store.request("GET", "screening_private_evidence", params={"screening_id": f"eq.{screening_id}", "select": "id,kind,challenge,decision,media_type,created_at"})}
+
+@router.get("/api/admin/screenings/{screening_id}/identity-intake")
+async def staff_identity(screening_id: UUID, user=Depends(require_admin)):
+    store = SupabaseStore()
+    row = await store.get_one("screening_requests", {"id": f"eq.{screening_id}"})
+    if not row or not manual_case(row): raise HTTPException(404, "Manual intake not found.")
+    item = await evidence(store, str(screening_id), "challenge")
+    if not item or not item.get("identity_intake_encrypted"): raise HTTPException(404, "The tenant has not sent their ID details.")
+    details = decrypt(item["identity_intake_encrypted"], str(screening_id))
+    await store.insert("screening_evidence_audit", {"screening_id": str(screening_id), "staff_id": user["id"], "action": "identity_read", "evidence_id": item["id"]})
+    return JSONResponse({"details": details, "submitted_at": item["identity_intake_at"], "provider_verified": False}, headers={"Cache-Control": "no-store", "Pragma": "no-cache"})
 
 class Decision(BaseModel):
     approved: bool
     statement_covers_three_months: bool = False
     affordability: str = Field(default="not_required", pattern="^(pass|review|not_required)$")
+    identity_outcome: Literal["reviewed", "needs_review"] | None = None
+    identity_notes: str = Field(default="", max_length=2000)
 
 @router.post("/api/admin/screenings/{screening_id}/evidence-decision")
 async def review(screening_id: UUID, payload: Decision, user=Depends(require_admin)):
@@ -189,9 +232,17 @@ async def review(screening_id: UUID, payload: Decision, user=Depends(require_adm
     if not row or row["package_id"] not in NEW_PACKAGES: raise HTTPException(404, "Screening not found.")
     if row["status"] != "incomplete": raise HTTPException(409, "Only a submitted screening waiting for review can be finalized.")
     link = await store.get_one("screening_tenant_tokens", {"screening_id": f"eq.{screening_id}", "consumed_at": "not.is.null"})
-    if not link or not row.get("identity_verified_at") or not await evidence(store, row["id"], "liveness"):
+    if not link or not await identity_ready(store, row) or not await evidence(store, row["id"], "liveness"):
         raise HTTPException(409, "The tenant must finish all steps before review.")
     checks = dict(row.get("check_status") or {})
+    if manual_case(row):
+        if row["package_id"] != "basic_v2": raise HTTPException(409, "Bureau credit review is not available.")
+        if not payload.identity_outcome or len(payload.identity_notes.strip()) < 10:
+            raise HTTPException(422, "Record the manual ID review outcome and a short basis for your review.")
+        item = await evidence(store, row["id"], "challenge")
+        await store.patch("screening_private_evidence", {"id": f"eq.{item['id']}"}, {"identity_review_encrypted": encrypt({"outcome": payload.identity_outcome, "notes": payload.identity_notes.strip(), "staff_id": user["id"], "reviewed_at": stamp()}, row["id"])})
+        checks["identity"] = "manual_reviewed" if payload.identity_outcome == "reviewed" else "needs_review"
+        checks["identity_method"] = "manual_review"
     required = statement_required(row["package_id"], row.get("monthly_rent"))
     if row["package_id"] == "intermediate_v2" and checks.get("credit_bureau") != "complete": raise HTTPException(409, "Credit check is not complete.")
     if required and not payload.statement_covers_three_months and payload.affordability != "review":

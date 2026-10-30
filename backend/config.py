@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     SCREENING_V2_CONSENT_VERSION: str = "2026-10-28-packages-v2"
     SCREENING_V2_ENABLED: bool = False
+    SCREENING_IDENTITY_MODE: Literal["mono", "manual"] = "mono"
 
     # App
     PORT: int = 8000
