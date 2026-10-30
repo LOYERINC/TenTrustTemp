@@ -1,0 +1,23 @@
+.tt-report-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 13px 14px;
+  border: 1px solid #b8dfcf;
+  border-radius: 12px;
+  background: #e5f7ee;
+  color: #155c3e;
+}
+.tt-report-verdict > svg { flex: none; }
+.tt-report-verdict > div { display: grid; gap: 2px; }
+.tt-report-verdict strong { font-size: 15px; line-height: 1.4; }
+.tt-report-verdict span { font-size: 12px; line-height: 1.45; }
+.tt-report-verdict + .tt-report-caption { margin-top: 18px; }
+.tt-report-row { padding-block: 12px; }
+.tt-report-row-icon { flex: none; }
+.tt-report-row-label { flex: 1; }
+.tt-report-row-label strong { display: block; font-size: 12px; line-height: 1.45; font-weight: 600; }
+.tt-report-row-label small { display: block; margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--muted); }
+.tt-report-row > .tt-badge { flex: none; white-space: nowrap; }
+.tt-report-compact .tt-report-row { min-height: 64px; }

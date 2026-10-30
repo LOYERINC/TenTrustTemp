@@ -46,7 +46,7 @@ export default function Listings() {
   return (
     <div className="min-h-screen font-sans bg-slate-50">
       {/* Navigation */}
-      <nav className="bg-white border-b border-slate-200">
+      <nav className="site-listings-nav bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <ShieldCheck className="w-8 h-8 text-brand-600" />

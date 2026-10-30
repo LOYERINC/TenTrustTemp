@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from routers import admin, health, mono, prembly, screenings
+from routers import admin, health, mono, prembly, screenings, screening_evidence
 from services.screening_store import close_http_clients, initialize_http_clients
 
 # Configure Logging
@@ -31,6 +31,7 @@ app.add_middleware(
 )
 
 # Register Routers
+app.include_router(screening_evidence.router)
 app.include_router(health.router)
 app.include_router(mono.router)
 app.include_router(prembly.router)

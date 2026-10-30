@@ -68,3 +68,5 @@ export { FileTextIcon as FileCheck } from '@phosphor-icons/react/dist/csr/FileTe
 export { WarningIcon as AlertTriangle } from '@phosphor-icons/react/dist/csr/Warning';
 export { ClipboardTextIcon as ClipboardList } from '@phosphor-icons/react/dist/csr/ClipboardText';
 export { ArrowCounterClockwiseIcon as RotateCcw } from '@phosphor-icons/react/dist/csr/ArrowCounterClockwise';
+export { ListIcon as Menu } from '@phosphor-icons/react/dist/csr/List';
+export { ArrowUpIcon as ArrowUp } from '@phosphor-icons/react/dist/csr/ArrowUp';
