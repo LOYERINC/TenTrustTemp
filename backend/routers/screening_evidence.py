@@ -19,6 +19,7 @@ from routers.mono import mono_service
 from routers.screenings import _tenant_rate_limit
 from services.package_policy import NEW_PACKAGES, statement_required
 from services.screening_store import SupabaseStore, get_http_client, hash_token, authenticated_user
+from services.prembly_service import prembly_service
 from services.manual_identity import manual_case, consent_version, encrypt, decrypt
 
 router = APIRouter(tags=["Private screening evidence"])
@@ -65,7 +66,7 @@ async def steps(token: str, request: Request):
         if not challenge: raise HTTPException(503, "Your screening steps could not load. Please try again.")
     video = await evidence(store, row["id"], "liveness")
     statement = await evidence(store, row["id"], "statement")
-    return {"identity_done": bool(challenge.get("identity_intake_at")) if manual_case(row) else bool(row.get("identity_verified_at")), "verification_mode": "manual" if manual_case(row) else "mono", "statement_required": statement_required(row["package_id"], row.get("monthly_rent")), "challenge": challenge["challenge"], "liveness_uploaded": bool(video), "statement_uploaded": bool(statement)}
+    return {"identity_done": bool(challenge.get("identity_intake_at")) if manual_case(row) else bool(row.get("identity_verified_at")), "verification_mode": "manual" if manual_case(row) else "mono", "identity_provider": (row.get("check_status") or {}).get("identity_provider"), "statement_required": statement_required(row["package_id"], row.get("monthly_rent")), "challenge": challenge["challenge"], "liveness_uploaded": bool(video), "statement_uploaded": bool(statement)}
 
 class Identity(BaseModel):
     full_name: str | None = Field(default=None, max_length=160)
@@ -89,6 +90,11 @@ async def identity(token: str, payload: Identity, request: Request):
         encrypted = encrypt({"full_name": payload.full_name.strip(), "bvn": payload.bvn, "nin": payload.nin, "date_of_birth": payload.date_of_birth}, row["id"])
         saved = await store.patch("screening_private_evidence", {"id": f"eq.{challenge['id']}", "identity_intake_encrypted": "is.null"}, {"identity_intake_encrypted": encrypted, "identity_intake_at": stamp()})
         if not saved: raise HTTPException(409, "Your ID details were already submitted.")
+        # Persist/claim intake before billed calls. Repeated submissions cannot run them twice.
+        if (row.get("check_status") or {}).get("identity_provider") == "prembly":
+            details={"full_name":payload.full_name.strip(),"bvn":payload.bvn,"nin":payload.nin,"date_of_birth":payload.date_of_birth}
+            provider_checks=await prembly_service.check_intake(details)
+            await store.patch("screening_private_evidence", {"id": f"eq.{challenge['id']}"}, {"identity_review_encrypted": encrypt({"provider_checks": provider_checks},row["id"])})
         checks = dict(row.get("check_status") or {})
         checks.update({"identity_method": "manual_review", "identity": "pending_review", "environment": "sandbox" if settings.PAYSTACK_SECRET_KEY.startswith("sk_test_") or settings.ENVIRONMENT == "demo" else "production"})
         await store.patch("screening_requests", {"id": f"eq.{row['id']}"}, {"check_status": checks, "masked_document": "ID details held privately"})
@@ -206,7 +212,9 @@ async def staff_list(screening_id: UUID, user=Depends(require_admin)):
     store = SupabaseStore()
     row = await store.get_one("screening_requests", {"id": f"eq.{screening_id}"})
     if not row: raise HTTPException(404, "Screening not found.")
-    return {"manual_review": manual_case(row), "items": await store.request("GET", "screening_private_evidence", params={"screening_id": f"eq.{screening_id}", "select": "id,kind,challenge,decision,media_type,created_at"})}
+    challenge = await evidence(store, str(screening_id), "challenge")
+    private = decrypt(challenge["identity_review_encrypted"], str(screening_id)) if challenge and challenge.get("identity_review_encrypted") else {}
+    return {"manual_review": manual_case(row), "provider_checks": private.get("provider_checks"), "items": await store.request("GET", "screening_private_evidence", params={"screening_id": f"eq.{screening_id}", "select": "id,kind,challenge,decision,media_type,created_at"})}
 
 @router.get("/api/admin/screenings/{screening_id}/identity-intake")
 async def staff_identity(screening_id: UUID, user=Depends(require_admin)):

@@ -120,8 +120,12 @@ def _package_availability(package_id: str) -> tuple[bool, list[str]]:
         missing = []
         if package_id == "custom_v2": return False, ["Choose your checks and request a quote."]
         if not settings.SCREENING_V2_ENABLED: missing.append("The new tenant flow is being set up.")
-        manual = settings.SCREENING_IDENTITY_MODE == "manual"
+        manual = settings.SCREENING_IDENTITY_MODE in ("manual", "prembly")
         if manual and package_id == "intermediate_v2": missing.append("Bureau credit checks are awaiting provider approval.")
+        if settings.SCREENING_IDENTITY_MODE == "prembly":
+            if not settings.PREMBLY_CHECKS_ENABLED or not settings.PREMBLY_SECRET_KEY: missing.append("ID checks are not configured.")
+            if settings.PAYSTACK_SECRET_KEY.startswith("sk_live_") and not settings.PREMBLY_SECRET_KEY.startswith("live_sk_"): missing.append("Live identity credentials are required.")
+            if settings.PAYSTACK_SECRET_KEY.startswith("sk_test_") and not settings.PREMBLY_SECRET_KEY.startswith("test_sk_"): missing.append("Test payments require test identity credentials.")
         if manual and not encryption_ready(): missing.append("Private manual review storage is not configured.")
         if not manual and (not settings.MONO_IDENTITY_CHECKS_ENABLED or not settings.MONO_SECRET_KEY): missing.append("ID checks are not configured.")
         if not manual and settings.PAYSTACK_SECRET_KEY.startswith("sk_live_") and not settings.MONO_SECRET_KEY.startswith("live_sk_"):
@@ -171,8 +175,8 @@ def _public_package(package_id: str) -> Dict[str, Any]:
     package = PACKAGES[package_id]
     enabled, reasons = _package_availability(package_id)
     if package_id in NEW_PACKAGES:
-        manual = settings.SCREENING_IDENTITY_MODE == "manual" and package_id == "basic_v2"
-        return {**package, "checks": ["manual_identity", "liveness", "report"] if manual else package["checks"], "description": "Our team reviews your ID details and video and prepares your report." if manual else package["description"], "verification_mode": "manual" if manual else "mono", "enabled": enabled, "unavailable_reason": "This plan is not available yet. Please choose Basic or contact us." if settings.SCREENING_IDENTITY_MODE == "manual" and package_id == "intermediate_v2" else "; ".join(reasons) if reasons else None}
+        manual = settings.SCREENING_IDENTITY_MODE in ("manual", "prembly") and package_id == "basic_v2"
+        return {**package, "checks": ["manual_identity", "liveness", "report"] if manual else package["checks"], "description": "Our team reviews your ID details and video and prepares your report." if manual else package["description"], "verification_mode": "manual" if manual else "mono", "enabled": enabled, "unavailable_reason": "This plan is not available yet. Please choose Basic or contact us." if settings.SCREENING_IDENTITY_MODE in ("manual", "prembly") and package_id == "intermediate_v2" else "; ".join(reasons) if reasons else None}
     description = {
         "identity": "One consent-based identity check. Your tenant enters their ID details in private.",
         "basic": "A score based on rent and income.",
@@ -422,7 +426,7 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
         raise HTTPException(status_code=422, detail="Choose a valid screening package.")
     if payload.package_id in NEW_PACKAGES and payload.intake_mode != "tenant_link":
         raise HTTPException(status_code=422, detail="These packages require the tenant’s private link.")
-    if settings.SCREENING_IDENTITY_MODE == "manual" and payload.package_id == "basic_v2" and not payload.manual_review_acknowledged:
+    if settings.SCREENING_IDENTITY_MODE in ("manual", "prembly") and payload.package_id == "basic_v2" and not payload.manual_review_acknowledged:
         raise HTTPException(status_code=422, detail="Basic includes staff review of ID details and video. Refresh the page and agree to this service before paying.")
     package = _public_package(payload.package_id)
     if not package["enabled"]:
@@ -452,7 +456,7 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
         "rental_reference": payload.rental_reference,
         "status": "draft",
         "payment_status": "unpaid",
-        "check_status": {"identity_method": "manual_review", "identity": "pending_submission"} if settings.SCREENING_IDENTITY_MODE == "manual" and payload.package_id == "basic_v2" else {},
+        "check_status": {"identity_method": "manual_review", "identity": "pending_submission", **({"identity_provider": "prembly"} if settings.SCREENING_IDENTITY_MODE == "prembly" else {})} if settings.SCREENING_IDENTITY_MODE in ("manual", "prembly") and payload.package_id == "basic_v2" else {},
     })
     if payload.intake_mode == "direct":
         await store.insert("screening_consents", {
@@ -761,7 +765,7 @@ async def capture_public_screening_consent(token: str, payload: TenantConsentCap
             "landlord_id": row["landlord_id"],
             "method": "tenant_direct_consent",
             "consented_as": row["tenant_name"],
-            "purpose": ("Staff review your submitted name, BVN, NIN, date of birth and video to prepare your screening report. Your landlord receives the final report, not your private ID numbers or video." if manual_case(row) else "BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
+            "purpose": ("Your name, BVN, NIN and date of birth are checked securely through Prembly. Staff review your video and prepare your report. Your landlord receives the report, not your private ID numbers or video." if (row.get("check_status") or {}).get("identity_provider") == "prembly" else "Staff review your submitted name, BVN, NIN, date of birth and video to prepare your screening report. Your landlord receives the final report, not your private ID numbers or video." if manual_case(row) else "BVN, NIN and manual liveness review; Intermediate includes a Mono credit lookup. For monthly rent over NGN 500000, staff privately review 3-month bank statements for affordability. Landlord sees final screening results only." if new_flow else "Identity verification: compare BVN, NIN and date of birth; landlord sees result only."),
             "version": version,
             "collected_at": datetime.now(timezone.utc).isoformat(),
         }
