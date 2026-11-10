@@ -42,8 +42,8 @@ class PremblyTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(settings,'PREMBLY_CHECKS_ENABLED',True),patch.object(settings,'PREMBLY_SECRET_KEY','test_sk_synthetic'),patch('services.prembly_service.httpx.AsyncClient',return_value=manager):
             await self.service.verify_bvn('11111111111');await self.service.verify_nin('22222222222')
         calls=client.post.await_args_list
-        self.assertTrue(calls[0].args[0].endswith('/verification/bvn_validation'))
-        self.assertTrue(calls[1].args[0].endswith('/verification/vnin-basic'))
+        self.assertTrue(calls[0].args[0].endswith('/api/v1/verification/api/bvn_basic/'))
+        self.assertTrue(calls[1].args[0].endswith('/api/v1/verification/api/nin_basic/'))
         self.assertEqual(calls[0].kwargs['json'],{'number':'11111111111'})
         self.assertEqual(calls[0].kwargs['headers']['x-api-key'],'test_sk_synthetic')
 

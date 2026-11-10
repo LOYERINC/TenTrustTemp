@@ -1,5 +1,6 @@
 """Prembly identity lookups. Keys and provider payloads stay on the server.
-Official references: docs.prembly.com/reference/bvn-basic and /national-id-basic.
+Official references: docs.prembly.com/api-reference/identity-verification/verify_bvn_basic
+and docs.prembly.com/api-reference/identity-verification/verify_nin_basic.
 """
 import logging
 import re
@@ -33,7 +34,7 @@ class PremblyService:
         if not settings.PREMBLY_CHECKS_ENABLED or not settings.PREMBLY_SECRET_KEY:
             raise HTTPException(503, "Identity checks are not enabled.")
         if not re.fullmatch(r"[0-9]{11}", number): raise HTTPException(422, "Enter an 11-digit ID number.")
-        paths = {"bvn": "/verification/bvn_validation", "nin": "/verification/vnin-basic"}
+        paths = {"bvn": "/api/v1/verification/api/bvn_basic/", "nin": "/api/v1/verification/api/nin_basic/"}
         # No automatic retries: each lookup can be billed by the provider.
         try:
             async with httpx.AsyncClient(timeout=30) as client:
