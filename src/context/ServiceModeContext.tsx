@@ -14,7 +14,7 @@ export function ServiceModeProvider({ children }: { children: ReactNode }) {
       .then(async response => {
         if (!response.ok) throw new Error('Service unavailable');
         const status = await response.json();
-        if (!controller.signal.aborted) setManualReview(status.identity_mode === 'manual');
+        if (!controller.signal.aborted) setManualReview(status.identity_mode === 'manual' || status.identity_mode === 'prembly');
         if (status.status !== 'healthy') throw new Error('Service unavailable');
         if (!controller.signal.aborted) setMode(status.demo === true || status.payment_mode === 'test'
           ? 'sandbox' : status.payment_mode === 'live' ? 'live' : 'unavailable');

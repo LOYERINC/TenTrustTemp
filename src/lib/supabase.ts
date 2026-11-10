@@ -41,3 +41,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+
+
+/** Public auth settings contain enabled providers, never client secrets. */
+export async function googleSignInAvailable(signal?:AbortSignal):Promise<boolean> {
+  if(!isSupabaseConfigured())return false;
+  try {
+    const response=await fetch(`${supabaseUrl}/auth/v1/settings`,{headers:{apikey:supabaseAnonKey},signal,cache:'no-store'});
+    if(!response.ok)return false;
+    const settings=await response.json();return settings.external?.google===true;
+  } catch {return false;}
+}

@@ -31,7 +31,7 @@ def manual_case(row):
 
 
 def consent_version(row):
-    return settings.SCREENING_V2_CONSENT_VERSION + ("-manual-v1" if manual_case(row) else "")
+    return settings.SCREENING_V2_CONSENT_VERSION + ("-prembly-v1" if (row.get("check_status") or {}).get("identity_provider") == "prembly" else "-manual-v1" if manual_case(row) else "")
 
 
 def encrypt(value, screening_id):

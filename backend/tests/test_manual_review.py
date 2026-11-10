@@ -220,3 +220,22 @@ class ReportTests(unittest.TestCase):
     def test_short_report_can_be_published_without_minimum_length(self):
         self.private['report_draft']['body']='Verified.'
         self.assertEqual(self.client.post(f'/api/admin/screenings/{SID}/report-publish').status_code,200)
+
+
+class PremblyIntakeTests(ManualRouteTests):
+    def test_prembly_runs_only_after_atomic_intake_and_explicit_provider_consent(self):
+        self.row['check_status']['identity_provider']='prembly'
+        self.assertTrue(vault.consent_version(self.row).endswith('-prembly-v1'))
+        self.store.patch.return_value=[{'id':'challenge'}]
+        with self.session(),patch.object(api,'evidence',AsyncMock(return_value={'id':'challenge'})),patch.object(vault.settings,'ENCRYPTION_KEY',KEY),patch.object(api.prembly_service,'check_intake',AsyncMock(return_value={'provider':'prembly','bvn':{'status':'matched'},'nin':{'status':'matched'}})) as provider:
+            result=self.client.post('/api/public/screenings/t/steps/identity',json=DETAILS)
+            self.assertEqual(result.status_code,200);provider.assert_awaited_once()
+            self.assertEqual(self.store.patch.await_args_list[0].args[1]['identity_intake_encrypted'],'is.null')
+            private=self.store.patch.await_args_list[1].args[2]
+            self.assertIn('provider_checks',vault.decrypt(private['identity_review_encrypted'],SID))
+
+    def test_duplicate_intake_never_bills_again(self):
+        self.row['check_status']['identity_provider']='prembly';self.store.patch.return_value=[]
+        with self.session(),patch.object(api,'evidence',AsyncMock(return_value={'id':'challenge'})),patch.object(vault.settings,'ENCRYPTION_KEY',KEY),patch.object(api.prembly_service,'check_intake',AsyncMock()) as provider:
+            self.assertEqual(self.client.post('/api/public/screenings/t/steps/identity',json=DETAILS).status_code,409)
+            provider.assert_not_awaited()

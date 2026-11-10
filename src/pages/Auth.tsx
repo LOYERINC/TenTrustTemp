@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, ArrowRight, CheckCircle2, Lock, Mail, Sparkles, AlertCircle, Eye, EyeSlash } from '../lib/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, googleSignInAvailable, supabase } from '../lib/supabase';
 import { screeningApi } from '../lib/screeningApi';
 import { authCallbackUrl, safeDashboardReturnTo } from '../lib/authLinks';
 import { Logo } from '../components/mvp-ui';
@@ -19,8 +19,11 @@ export default function Auth() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  const [googleEnabled,setGoogleEnabled]=useState(false);
+  useEffect(()=>{const controller=new AbortController();void googleSignInAvailable(controller.signal).then(enabled=>{if(!controller.signal.aborted)setGoogleEnabled(enabled);});return()=>controller.abort();},[]);
+  const handleGoogleSignIn=async()=>{setIsProcessing(true);setErrorMessage('');try{await signInWithGoogle(role);}catch(error){setErrorMessage(error instanceof Error?error.message:'Google sign-in could not start. Please use email.');setIsProcessing(false);}};
   const navigate = useNavigate();
-  const { user, signInWithEmail, signUpWithEmail, signInWithMagicLink, loginAsDemo } = useAuth();
+  const { user, signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithMagicLink, loginAsDemo } = useAuth();
 
   useEffect(() => {
     const target = safeDashboardReturnTo(new URLSearchParams(window.location.search).get('returnTo'), window.location.origin);
@@ -185,6 +188,7 @@ export default function Auth() {
             <button type="submit" disabled={isProcessing} className="tt-auth-submit"><span className={isProcessing ? 'tt-auth-spinner' : 'tt-auth-submit-icon'} aria-hidden="true">{isProcessing ? '' : <ArrowRight size={19}/>}</span>{isProcessing ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button>
           </form>
 
+          {googleEnabled && <button type="button" onClick={()=>void handleGoogleSignIn()} disabled={isProcessing} className="tt-auth-google">Continue with Google</button>}
           <p className="tt-auth-legal">By continuing you agree to our <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.</p>
 
           {!import.meta.env.PROD && !isSupabaseConfigured() && <section className="tt-auth-demo" aria-label="Demo accounts"><p>Explore a demo account</p><div>

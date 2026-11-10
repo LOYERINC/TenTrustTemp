@@ -262,16 +262,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: authCallbackUrl(window.location.origin),
           queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'select_account',
           },
         },
       });
+      if (error) throw error;
     } catch (e) {
       throw e;
     }

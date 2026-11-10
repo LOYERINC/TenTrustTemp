@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from typing import Optional
 import hmac
 from config import settings
@@ -10,7 +10,7 @@ from schemas.prembly import (
     PremblyWebhookPayload,
 )
 from services.prembly_service import prembly_service
-from services.screening_store import authenticated_user_id
+from routers.admin import require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/prembly", tags=["Prembly KYC & Background Checks"])
@@ -22,8 +22,7 @@ router = APIRouter(prefix="/api/prembly", tags=["Prembly KYC & Background Checks
     summary="Verify BVN Identity",
     description="Validates an 11-digit BVN and returns official KYC details (Full Name, Date of Birth, Gender, Watchlist status, etc.)."
 )
-async def verify_bvn(payload: PremblyBVNVerificationRequest, authorization: Optional[str] = Header(default=None)):
-    await authenticated_user_id(authorization)
+async def verify_bvn(payload: PremblyBVNVerificationRequest, _user=Depends(require_admin)):
     result = await prembly_service.verify_bvn(
         bvn=payload.bvn,
         first_name=payload.first_name,
@@ -39,8 +38,7 @@ async def verify_bvn(payload: PremblyBVNVerificationRequest, authorization: Opti
     summary="Verify NIN Identity",
     description="Validates an 11-digit NIN and returns KYC verification records."
 )
-async def verify_nin(payload: PremblyNINVerificationRequest, authorization: Optional[str] = Header(default=None)):
-    await authenticated_user_id(authorization)
+async def verify_nin(payload: PremblyNINVerificationRequest, _user=Depends(require_admin)):
     result = await prembly_service.verify_nin(
         nin=payload.nin,
         first_name=payload.first_name,
