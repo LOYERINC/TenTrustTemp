@@ -129,7 +129,13 @@ The foundation and snapshot migrations were applied atomically to hosted Supabas
 project `elsvzazxshrqzwtuappy` on 2026-11-25. A read-only schema check confirmed the
 intake table, snapshot column and publication function. This was a manual SQL
 Editor rollout, without migration-history bookkeeping; do not reapply blindly.
-Application preview deployment and the user’s black-box rehearsal remain pending.
+The separate Free Render sandbox backend is live at
+`https://tentrust-complete-check-preview.onrender.com` (development + Paystack
+Test + Interswitch Test + Gemini). Its health, package availability and preview
+CORS checks passed. The Vercel preview has saved public API/Supabase settings,
+but its final rebuild is awaiting the account owner’s email verification.
+The user’s black-box rehearsal remains pending; Interswitch wallet provisioning
+is still the last-confirmed provider blocker.
 
 `backend/services/gemini_report.py` sends normalized financial evidence, without
 personal identifiers or raw profile data. The generation schema is simplified to
