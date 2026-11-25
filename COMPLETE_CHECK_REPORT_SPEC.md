@@ -133,7 +133,8 @@ The separate Free Render sandbox backend is live at
 `https://tentrust-complete-check-preview.onrender.com` (development + Paystack
 Test + Interswitch Test + Gemini). Its health, package availability and preview
 CORS checks passed. The Vercel preview has saved public API/Supabase settings,
-but its final rebuild is awaiting the account owner’s email verification.
+but its final rebuild was deferred after the account-verification prompt so the
+user can test locally first. No production application deployment was performed.
 The user’s black-box rehearsal remains pending; Interswitch wallet provisioning
 is still the last-confirmed provider blocker.
 
