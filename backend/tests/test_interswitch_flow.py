@@ -51,12 +51,13 @@ class Store:
         return [values]
 
     async def rpc(self, function, values):
-        if function == "publish_interswitch_sandbox_report":
+        if function == "publish_complete_check_report":
             if self.intake["state"] != "submitted":
                 return False
             self.intake["state"] = "published"
             self.row["status"] = "complete"
             self.row["check_status"]["loan_history"] = values["p_loan_history"]
+            self.row["published_report"] = {**values["p_report"], "state": "published"}
             return True
         kind = values["p_check_type"]
         if not self.consent or kind in self.attempts:
@@ -140,11 +141,22 @@ def test_paid_sandbox_tenant_flow(monkeypatch):
         assert client.get(staff_url).status_code == 403
         review = client.get(staff_url, headers=staff_headers).json()
         assert review["loan_history"] == "no_history"
-        assert client.post(staff_url + "/publish", headers=staff_headers, json={"video_review":"reviewed"}).json() == {"published": True}
-        assert client.post(staff_url + "/publish", headers=staff_headers, json={"video_review":"reviewed"}).status_code == 404
+        draft = client.get(staff_url + "/report-draft?video_review=reviewed", headers=staff_headers).json()
+        assert draft['admin_decision'] is None
+        assert client.post(staff_url + '/publish', headers=staff_headers, json={"video_review": "reviewed", "report_approved": True, "report": draft}).status_code == 422
+        draft['admin_decision'] = {"outcome": "further_information_required", "reasons": "Sample administrator entry: further information is required before a selection decision.", "origin": "administrator"}
+        publication = {"video_review": "reviewed", "report_approved": True, "report": draft}
+        assert client.post(staff_url + "/publish", headers=staff_headers, json={**publication, "report_approved": False}).status_code == 422
+        assert client.post(staff_url + "/publish", headers=staff_headers, json={**publication, "video_review": "needs_review"}).status_code == 409
+        forged = {**draft, "findings": [dict(item) for item in draft["findings"]]}
+        forged["findings"][2]["text"] = "Tenant has no debt."
+        assert client.post(staff_url + "/publish", headers=staff_headers, json={**publication, "report": forged}).status_code == 409
+        assert client.post(staff_url + "/publish", headers=staff_headers, json=publication).json() == {"published": True}
+        assert client.post(staff_url + "/publish", headers=staff_headers, json=publication).status_code == 404
     assert called == ["nin", "session", "send", "verify", "loans"]
     assert store.row["status"] == "complete"
     assert store.row["check_status"]["loan_history"] == "no_history"
+    assert store.row["published_report"]["generator"] == "verified-facts-template"
     assert store.attempts["loan_history"]["provider_reference"] == "fixture-reference"
 
 

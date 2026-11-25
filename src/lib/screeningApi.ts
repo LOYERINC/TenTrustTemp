@@ -48,7 +48,7 @@ export async function screeningApi<T>(path: string, options: RequestInit = {}, r
   const requestStartedAt = performance.now();
   const headers = new Headers(options.headers);
   let paymentRequestKey = '';
-  headers.set('Content-Type', 'application/json');
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (requireAuth) {
     const sessionStartedAt = performance.now();
     const { data: { session } } = await supabase.auth.getSession();

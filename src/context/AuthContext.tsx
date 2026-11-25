@@ -48,9 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured()) {
       // Local accounts are only a development fallback when Supabase is not configured.
       const savedActiveUser = localStorage.getItem('tentrust_active_user');
-      if (savedActiveUser) {
+      if (savedActiveUser && !import.meta.env.PROD) {
         try {
-          setUser(JSON.parse(savedActiveUser));
+          const saved = JSON.parse(savedActiveUser);
+          setUser({ ...saved, role: saved.role === 'tenant' ? 'tenant' : 'landlord' });
         } catch {
           localStorage.removeItem('tentrust_active_user');
         }
@@ -71,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: session.user.email || '',
             firstName: meta.first_name || nameParts[0] || 'User',
             lastName: meta.last_name || nameParts.slice(1).join(' ') || '',
-            role: (meta.role as UserRole) || 'landlord',
+            role: meta.role === 'tenant' ? 'tenant' : 'landlord',
             verified: !!session.user.email_confirmed_at,
           };
           setUser(authUser);
@@ -93,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: session.user.email || '',
             firstName: meta.first_name || nameParts[0] || 'User',
             lastName: meta.last_name || nameParts.slice(1).join(' ') || '',
-            role: (meta.role as UserRole) || 'landlord',
+            role: meta.role === 'tenant' ? 'tenant' : 'landlord',
             verified: !!session.user.email_confirmed_at,
           };
           setUser(authUser);
@@ -110,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     const cleanEmail = email.trim().toLowerCase();
+    if (import.meta.env.PROD && !isSupabaseConfigured()) return { error: { message: 'Account access is temporarily unavailable.' } };
 
     if (isSupabaseConfigured()) {
       try {
@@ -125,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: data.user.email || cleanEmail,
             firstName: meta.first_name || nameParts[0] || 'User',
             lastName: meta.last_name || nameParts.slice(1).join(' ') || '',
-            role: (meta.role as UserRole) || 'landlord',
+            role: meta.role === 'tenant' ? 'tenant' : 'landlord',
             verified: !!data.user.email_confirmed_at,
           };
           setUser(loggedUser);
@@ -147,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: cleanEmail,
           firstName: existingLocal.firstName,
           lastName: existingLocal.lastName,
-          role: existingLocal.role,
+          role: existingLocal.role === 'tenant' ? 'tenant' : 'landlord',
           verified: true,
         };
         setUser(loggedUser);
@@ -163,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: cleanEmail,
       firstName: cleanEmail.split('@')[0],
       lastName: '',
-      role: cleanEmail.includes('admin') ? 'admin' : 'landlord',
+      role: 'landlord',
       verified: true,
     };
     saveLocalAccount(cleanEmail, { ...fallbackUser, password });
@@ -178,17 +180,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     metadata: { firstName: string; lastName: string; role: UserRole }
   ) => {
     const cleanEmail = email.trim().toLowerCase();
-
+    if (import.meta.env.PROD && !isSupabaseConfigured()) return { error: { message: 'Account access is temporarily unavailable.' } };
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password,
           options: {
+            emailRedirectTo: window.location.origin + '/auth/callback',
             data: {
               first_name: metadata.firstName,
               last_name: metadata.lastName,
-              role: metadata.role,
+              role: metadata.role === 'tenant' ? 'tenant' : 'landlord',
             },
           },
         });
@@ -208,7 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: cleanEmail,
           firstName: metadata.firstName,
           lastName: metadata.lastName,
-          role: metadata.role,
+          role: metadata.role === 'tenant' ? 'tenant' : 'landlord',
           verified: true,
         };
 
@@ -224,7 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: cleanEmail,
               first_name: metadata.firstName,
               last_name: metadata.lastName,
-              role: metadata.role,
+              role: metadata.role === 'tenant' ? 'tenant' : 'landlord',
               created_at: new Date().toISOString(),
             });
           }
@@ -242,7 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: cleanEmail,
       firstName: metadata.firstName,
       lastName: metadata.lastName,
-      role: metadata.role,
+      role: metadata.role === 'tenant' ? 'tenant' : 'landlord',
       verified: true,
     };
     saveLocalAccount(cleanEmail, { ...newUser, password });
@@ -253,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async (role: UserRole = 'landlord') => {
     if (!isSupabaseConfigured()) {
+      if (import.meta.env.PROD) throw new Error('Account access is temporarily unavailable.');
       await loginAsDemo(role);
       return;
     }
@@ -260,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/dashboard',
+          redirectTo: window.location.origin + '/auth/callback',
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -279,7 +283,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.auth.signInWithOtp({
           email: cleanEmail,
           options: {
-            emailRedirectTo: window.location.origin + '/dashboard',
+            emailRedirectTo: window.location.origin + '/auth/callback',
+            shouldCreateUser: false,
           },
         });
         if (error) return { error };
@@ -288,22 +293,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: err };
       }
     }
+    if (import.meta.env.PROD) return { error: { message: 'Account access is temporarily unavailable.' } };
     await loginAsDemo(role);
     return { error: null };
   };
 
   const loginAsDemo = async (role: UserRole) => {
+    if (import.meta.env.PROD || role === 'admin') throw new Error('Demo access is unavailable.');
     let demoUser: User;
-    if (role === 'admin') {
-      demoUser = {
-        id: 'demo-admin-001',
-        email: 'admin@tentrust.ng',
-        firstName: 'TenTrust',
-        lastName: 'Admin',
-        role: 'admin',
-        verified: true,
-      };
-    } else if (role === 'landlord') {
+    if (role === 'landlord') {
       demoUser = {
         id: 'demo-landlord-123',
         email: 'landlord@tentrust.ng',

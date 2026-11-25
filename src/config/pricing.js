@@ -3,7 +3,7 @@
 export const tiers = [
   { id: 'basic', name: 'Identity check', price: 5000, turnaround: '5–10 minutes', description: 'Confirm who they are.', includes: ['Identity check (BVN/NIN match)', 'Phone verification'] },
   { id: 'standard', name: 'Standard', price: 10000, recommended: true, turnaround: '5–10 minutes', description: 'Identity plus proof of income and address.', includes: ['Everything in Identity check', 'Employment verification', 'Address verification'] },
-  { id: 'complete', name: 'Complete', price: 15000, turnaround: '5–10 minutes', description: 'The full picture before you hand over the keys.', includes: ['Everything in Standard', 'Reference checks', 'Background check'] },
+  { id: 'intermediate_v2', name: 'Complete Check', price: 4000, turnaround: '', description: 'Interswitch ID and loan-history checks with staff video review.', includes: ['BVN and NIN checks', 'Staff video review', 'Loan history', 'Screening report'] },
 ];
 
 export const agentPacks = [

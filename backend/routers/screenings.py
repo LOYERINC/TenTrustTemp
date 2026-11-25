@@ -22,12 +22,19 @@ router = APIRouter(tags=["Tenant Screenings"])
 
 CONSENT_PURPOSE = "Tenant rental score and any selected BVN credit check for the specified tenancy application."
 PACKAGES: Dict[str, Dict[str, Any]] = {
+    "intermediate_v2": {"id": "intermediate_v2", "name": "Complete Check", "price": 4000, "currency": "NGN", "checks": ["bvn", "nin", "loan_history", "video"], "check_count": 1},
     "identity": {"id": "identity", "name": "Identity verification", "price": settings.IDENTITY_VERIFICATION_PRICE_NGN, "currency": "NGN", "checks": ["identity"], "check_count": 1},
     "basic": {"id": "basic", "name": "Basic", "price": 3000, "currency": "NGN", "checks": ["readiness_score"], "check_count": 1},
     "standard": {"id": "standard", "name": "Standard", "price": 7000, "currency": "NGN", "checks": ["readiness_score", "credit_bureau"], "credit_provider": "crc", "check_count": 1},
     "premium": {"id": "premium", "name": "Premium", "price": 12000, "currency": "NGN", "checks": ["readiness_score", "credit_bureau"], "credit_provider": "all", "check_count": 1},
     "founding": {"id": "founding", "name": "Founding Member", "price": 25000, "currency": "NGN", "checks": ["3_premium_checks"], "credit_provider": "all", "check_count": 3},
 }
+
+
+def _payment_provider(package_id: str) -> str:
+    if package_id in ("identity", "intermediate_v2"):
+        return "paystack"
+    return settings.PAYMENT_PROVIDER.strip().lower()
 
 
 class ScreeningCreate(BaseModel):
@@ -108,13 +115,19 @@ def _tenant_rate_limit(request: Request, token: str) -> None:
 
 
 def _package_availability(package_id: str) -> tuple[bool, list[str]]:
-    package = PACKAGES[package_id]
     missing = []
+    if package_id == "intermediate_v2":
+        if settings.ENVIRONMENT != "development" or not settings.INTERSWITCH_SANDBOX_ENABLED:
+            missing.append("Complete Check is coming soon.")
+        elif not settings.PAYSTACK_SECRET_KEY.startswith("sk_test_"):
+            missing.append("Complete Check requires Paystack Test.")
+        if not (settings.INTERSWITCH_TEST_CLIENT_ID and settings.INTERSWITCH_TEST_CLIENT_SECRET):
+            missing.append("Interswitch test keys are required.")
     if package_id == "identity" and (not settings.MONO_SECRET_KEY or not settings.MONO_IDENTITY_CHECKS_ENABLED):
         missing.append("identity verification is not configured")
-    if package_id in ("standard", "premium", "founding") and (not settings.MONO_SECRET_KEY or not settings.MONO_CREDIT_CHECKS_ENABLED):
+    if package_id in ("standard", "premium", "founding"):
         missing.append("Credit check is not set up yet")
-    provider = "paystack" if package_id == "identity" else settings.PAYMENT_PROVIDER.strip().lower()
+    provider = _payment_provider(package_id)
     if provider == "paystack" and not settings.PAYSTACK_SECRET_KEY:
         missing.append("payments are not configured")
     elif provider == "flutterwave":
@@ -139,6 +152,7 @@ def _public_package(package_id: str) -> Dict[str, Any]:
     package = PACKAGES[package_id]
     enabled, reasons = _package_availability(package_id)
     description = {
+        "intermediate_v2": "Interswitch identity and loan-history checks with staff video review.",
         "identity": "One consent-based identity check. Your tenant enters their ID details in private.",
         "basic": "A score based on rent and income.",
         "standard": "A score and a credit report from one source.",
@@ -214,6 +228,11 @@ async def _fulfill_payment(
     if not payment:
         raise HTTPException(status_code=404, detail="Payment reference not found.")
     expected_package = PACKAGES[payment["package_id"]]
+    legacy_intermediate = payment["package_id"] == "intermediate_v2" and payment["amount_kobo"] == 300000
+    if payment["package_id"] == "intermediate_v2" and not legacy_intermediate and (
+        payment.get("mode") != "test" or transaction.get("domain") != "test"
+    ):
+        raise HTTPException(status_code=400, detail="Complete Check requires a confirmed test payment.")
     if (
         transaction.get("provider", "paystack") != payment.get("provider", "paystack")
         or
@@ -221,7 +240,7 @@ async def _fulfill_payment(
         or transaction.get("reference") != reference
         or transaction.get("amount") != payment["amount_kobo"]
         or transaction.get("currency") != payment["currency"]
-        or payment["amount_kobo"] != expected_package["price"] * 100
+        or (not legacy_intermediate and payment["amount_kobo"] != expected_package["price"] * 100)
     ):
         raise HTTPException(status_code=400, detail="Payment details do not match this screening request.")
     await store.rpc("fulfill_screening_payment", {
@@ -328,43 +347,16 @@ async def _process_screening(
         "status": "complete",
         "completed_at": datetime.now(timezone.utc).isoformat(),
     })
-    await _notify_landlord_report_ready(row)
     return updated[0]
 
 
-async def _notify_landlord_report_ready(row: Dict[str, Any]) -> None:
-    """Send a minimal email notice; the report itself remains behind landlord authentication."""
-    email = row.get("landlord_email")
-    if not email:
-        logger.info("Report-ready email skipped because this landlord has no email address.")
-        return
-    if not settings.RESEND_API_KEY or not settings.SCREENING_NOTIFICATION_FROM_EMAIL:
-        logger.info("Report-ready email is not configured; landlord can view the report in the dashboard.")
-        return
-
-    report_url = f"{settings.PUBLIC_APP_URL.rstrip('/')}/dashboard?tab=verify-tenant&report={row['id']}"
-    message = {
-        "from": settings.SCREENING_NOTIFICATION_FROM_EMAIL,
-        "to": [email],
-        "subject": "Your TenTrust identity report is ready",
-        "text": (
-            "A tenant identity report is ready in your TenTrust dashboard. "
-            "Sign in to review the verification result and name match.\n\n"
-            f"Open your report: {report_url}\n\n"
-            "The report is advisory and does not make an automatic rental decision."
-        ),
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                "https://api.resend.com/emails",
-                json=message,
-                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-            )
-        if response.status_code >= 400:
-            logger.warning("Report-ready email delivery failed with HTTP %s.", response.status_code)
-    except httpx.RequestError as exc:
-        logger.warning("Report-ready email delivery could not reach the email provider: %s", exc)
+def payment_mode(provider: str) -> str:
+    key = settings.PAYSTACK_SECRET_KEY if provider == 'paystack' else settings.FLW_SECRET_KEY
+    if provider == 'paystack':
+        return 'test' if key.startswith('sk_test_') else 'live' if key.startswith('sk_live_') else 'unknown'
+    if provider == 'flutterwave':
+        return 'test' if key.startswith('FLWSECK_TEST-') else 'live' if key.startswith('FLWSECK-') else 'unknown'
+    return 'unknown'
 
 
 @router.get("/api/screenings/packages")
@@ -406,6 +398,8 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
     package = _public_package(payload.package_id)
     if not package["enabled"]:
         raise HTTPException(status_code=409, detail=package["unavailable_reason"] or "This package is not available.")
+    if payload.package_id == "intermediate_v2" and (payload.intake_mode != "tenant_link" or payload.use_bundle_credit):
+        raise HTTPException(status_code=422, detail="Complete Check uses a private tenant link and its own test payment.")
     if payload.intake_mode == "direct" and not payload.landlord_confirms_consent:
         raise HTTPException(status_code=400, detail="Confirm that the tenant gave consent before starting this check.")
     if payload.total_payments is not None and payload.on_time_payments is not None and payload.on_time_payments > payload.total_payments:
@@ -431,6 +425,7 @@ async def create_screening(payload: ScreeningCreate, authorization: Optional[str
         "rental_reference": payload.rental_reference,
         "status": "draft",
         "payment_status": "unpaid",
+        **({"check_status": {"identity_provider": "interswitch"}} if payload.package_id == "intermediate_v2" else {}),
     })
     if payload.intake_mode == "direct":
         await store.insert("screening_consents", {
@@ -506,15 +501,18 @@ async def initialize_checkout(screening_id: str, authorization: Optional[str] = 
         raise HTTPException(status_code=400, detail="A valid landlord email is required for payment receipts.")
     existing = await _payment_for_screening(store, screening_id)
     if existing and existing["status"] == "pending":
+        if row["package_id"] == "intermediate_v2" and not existing.get("authorization_url"):
+            raise HTTPException(409, "Checkout is being prepared. Wait before trying again.")
         return {"status": "pending", "reference": existing["reference"], "authorization_url": existing.get("authorization_url")}
     reference = f"tt_{uuid4().hex}"
     amount_kobo = package["price"] * 100
-    provider = "paystack" if row["package_id"] == "identity" else settings.PAYMENT_PROVIDER.strip().lower()
+    provider = _payment_provider(row["package_id"])
     payment = await store.insert("screening_payments", {
         "screening_id": screening_id,
         "landlord_id": user_id,
         "package_id": row["package_id"],
         "provider": provider,
+        "mode": payment_mode(provider),
         "reference": reference,
         "amount_kobo": amount_kobo,
         "currency": "NGN",
@@ -636,6 +634,7 @@ async def get_screening(screening_id: str, authorization: Optional[str] = Header
         "payment_reference": payment.get("reference") if payment else None,
         "name_match": row.get("name_match"), "masked_document": row.get("masked_document"),
         "identity_verified_at": row.get("identity_verified_at"), "report_id": row.get("report_id"),
+        "published_report": row.get("published_report") if row["status"] == "complete" else None,
         "landlord_name": row.get("landlord_name"),
     }
 
@@ -691,6 +690,14 @@ async def get_public_screening(token: str, request: Request):
     row = await store.get_one("screening_requests", {"id": f"eq.{token_row['screening_id']}", "payment_status": "eq.paid"})
     if not row or row["status"] in ("complete", "declined", "expired"):
         raise HTTPException(status_code=404, detail="This tenant link has already been used or is unavailable.")
+    if (row.get("check_status") or {}).get("identity_provider") == "interswitch":
+        return {
+            "tenant_name": row["tenant_name"],
+            "property_title": row["property_title"],
+            "landlord_name": row.get("landlord_name") or "Your landlord",
+            "identity_provider": "interswitch",
+            "package": {"name": "Complete Check", "checks": ["bvn", "nin", "loan_history"]},
+        }
     return {
         "tenant_name": row["tenant_name"],
         "property_title": row["property_title"],
@@ -715,17 +722,22 @@ async def capture_public_screening_consent(token: str, payload: TenantConsentCap
     row = await store.get_one("screening_requests", {"id": f"eq.{token_row['screening_id']}", "payment_status": "eq.paid"})
     if not row or row["status"] == "complete":
         raise HTTPException(status_code=404, detail="This tenant link has already been used or is unavailable.")
+    if (row.get("check_status") or {}).get("identity_provider") == "interswitch":
+        raise HTTPException(409, "Use the Complete Check consent step for this case.")
     existing = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
-    if not existing:
-        await store.insert("screening_consents", {
+    consent_data = {
             "screening_id": row["id"],
             "landlord_id": row["landlord_id"],
             "method": "tenant_direct_consent",
             "consented_as": row["tenant_name"],
-            "purpose": "Identity verification: compare the tenant-provided ID and date of birth; landlord sees verification result and name-match status only.",
+            "purpose": "Identity verification: compare the tenant-provided BVN, NIN and date of birth; landlord sees verification result and name-match status only.",
             "version": settings.IDENTITY_CONSENT_VERSION,
             "collected_at": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+    if not existing:
+        await store.insert("screening_consents", consent_data)
+    elif existing.get("version") != settings.IDENTITY_CONSENT_VERSION:
+        await store.patch("screening_consents", {"id": f"eq.{existing['id']}"}, consent_data)
     return {"consent_recorded": True}
 
 
@@ -738,11 +750,20 @@ async def complete_public_identity(token: str, request: Request):
         raise HTTPException(status_code=400, detail="Enter your ID details and try again.") from exc
     document_type = body.get("document_type") if isinstance(body, dict) else None
     document_number = body.get("document_number") if isinstance(body, dict) else None
+    bvn = body.get("bvn") if isinstance(body, dict) else None
+    nin = body.get("nin") if isinstance(body, dict) else None
+    if document_type == "bvn" and bvn is None:
+        bvn = document_number
+    elif document_type == "nin" and nin is None:
+        nin = document_number
     date_of_birth = body.get("date_of_birth") if isinstance(body, dict) else None
     if document_type not in ("bvn", "nin"):
         raise HTTPException(status_code=422, detail="Choose BVN or NIN.")
     if not isinstance(document_number, str) or len(document_number) != 11 or not document_number.isdigit():
         raise HTTPException(status_code=422, detail=f"That {document_type.upper()} doesn't look right. Check the 11 digits and try again.")
+    for kind, number in (("BVN", bvn), ("NIN", nin)):
+        if not isinstance(number, str) or len(number) != 11 or not number.isascii() or not number.isdigit():
+            raise HTTPException(status_code=422, detail=f"Enter your 11-digit {kind}. Both BVN and NIN are required for this identity check.")
     if not isinstance(date_of_birth, str):
         raise HTTPException(status_code=422, detail="Enter a valid date of birth.")
     if not settings.MONO_SECRET_KEY or not settings.MONO_IDENTITY_CHECKS_ENABLED:
@@ -758,9 +779,13 @@ async def complete_public_identity(token: str, request: Request):
     row = await store.get_one("screening_requests", {"id": f"eq.{token_row['screening_id']}", "payment_status": "eq.paid"})
     if not row or row.get("status") in ("complete", "declined", "expired"):
         raise HTTPException(status_code=410, detail="This link has already been used or is no longer available.")
+    if (row.get("check_status") or {}).get("identity_provider") == "interswitch":
+        raise HTTPException(409, "Use the Complete Check identity step for this case.")
     consent = await store.get_one("screening_consents", {"screening_id": f"eq.{row['id']}", "method": "eq.tenant_direct_consent"})
     if not consent:
         raise HTTPException(status_code=403, detail="Please give consent before continuing.")
+    if consent.get("version") != settings.IDENTITY_CONSENT_VERSION:
+        raise HTTPException(status_code=403, detail="Please refresh this page and review the updated consent for checking both BVN and NIN.")
     try:
         datetime.strptime(date_of_birth, "%Y-%m-%d")
     except ValueError as exc:
@@ -770,7 +795,7 @@ async def complete_public_identity(token: str, request: Request):
         raise HTTPException(status_code=410, detail="This link has already been used or is no longer available.")
     last_four = document_number[-4:]
     try:
-        result = await mono_service.verify_identity(document_type=document_type, document_number=document_number, date_of_birth=date_of_birth)
+        result = await mono_service.verify_identity(bvn=bvn, nin=nin, date_of_birth=date_of_birth)
     except Exception:
         await store.patch("screening_tenant_tokens", {"id": f"eq.{token_row['id']}"}, {"claimed_at": None})
         raise
@@ -778,8 +803,12 @@ async def complete_public_identity(token: str, request: Request):
         # Keep the submitted identifier only in request memory; never persist or log it.
         if isinstance(body, dict):
             body["document_number"] = ""
+            body["bvn"] = ""
+            body["nin"] = ""
             body["date_of_birth"] = ""
         document_number = ""
+        bvn = ""
+        nin = ""
         date_of_birth = ""
     personal_data = result.get("personal_information") or result.get("identity") or {}
     personal = personal_data if isinstance(personal_data, dict) else {}
@@ -808,7 +837,6 @@ async def complete_public_identity(token: str, request: Request):
         "check_status": {"identity": "verified" if verified_name else "could_not_verify"},
     })
     await store.patch("screening_tenant_tokens", {"id": f"eq.{token_row['id']}"}, {"consumed_at": now, "claimed_at": None})
-    await _notify_landlord_report_ready(row)
     return {"status": "complete" if verified_name else "incomplete", "name_match": name_match if verified_name else None, "identity_verified_at": now, "report_id": report_id}
 
 
@@ -823,6 +851,8 @@ async def complete_public_screening(token: str, payload: ScreeningCompletion):
     row = await store.get_one("screening_requests", {"id": f"eq.{token_row['screening_id']}", "payment_status": "eq.paid"})
     if not row or row["status"] == "complete":
         raise HTTPException(status_code=404, detail="This tenant link has already been used or is unavailable.")
+    if (row.get("check_status") or {}).get("identity_provider") == "interswitch":
+        raise HTTPException(409, "Use the Complete Check submission steps for this case.")
     updated = await _process_screening(store, row, payload, "tenant_direct_consent")
     await store.patch("screening_tenant_tokens", {"id": f"eq.{token_row['id']}"}, {"consumed_at": datetime.now(timezone.utc).isoformat()})
     return {"status": updated["status"], "score": updated.get("score"), "check_status": updated.get("check_status") or {}}

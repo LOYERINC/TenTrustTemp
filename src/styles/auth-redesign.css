@@ -14,4 +14,7 @@
 @media(max-width:520px){.tt-auth-brand-panel{padding:14px 20px}.tt-auth-brand-inner{gap:12px}.tt-auth-wordmark{font-size:17px}.tt-auth-logo-tile{width:36px;height:36px}.tt-auth-form-panel{padding:28px 20px 36px}.tt-auth-mobile-brand{margin-bottom:25px}.tt-auth-form-wrap{width:100%}.tt-auth-heading h2{font-size:27px}.tt-auth-role-options{gap:7px}.tt-auth-role-pill span{font-size:12px;padding-inline:5px}.tt-auth-name-row{gap:9px}.tt-auth-demo>div{gap:6px}.tt-auth-demo button{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.tt-auth-v2 *,.tt-auth-v2 *:before,.tt-auth-v2 *:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .tt-auth-mobile-copy{display:none}
+.tt-auth-forgot-row{flex-wrap:wrap;justify-content:flex-start;gap:4px 16px}
+.tt-auth-forgot-row button{min-height:44px;padding:4px 0}
+.tt-auth-forgot-row button:focus-visible{outline:2px solid var(--blue-700);outline-offset:3px;border-radius:3px}
 @media(max-width:900px){.tt-auth-desktop-copy{display:none}.tt-auth-mobile-copy{display:inline}}

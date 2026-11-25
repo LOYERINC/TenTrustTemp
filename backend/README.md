@@ -1,5 +1,7 @@
 # TenTrust Backend (FastAPI)
 
+The authenticated verification module under `/api/v1` is documented in [verification/README.md](verification/README.md), including separate Mono BVN OTP/NIN flows, consent, private evidence, human review and retention. Credit lookup remains disabled.
+
 FastAPI service integrating **Mono** (Credit History Checks via BVN) and **Prembly** (KYC & Background Verification).
 
 ## 🚀 Getting Started
@@ -47,7 +49,7 @@ supabase db push
 
 Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `PAYMENT_PROVIDER`, and the selected gateway's credentials on the FastAPI service. Keep service-role and payment secret keys on the server only. Set a stable `TENANT_LINK_SIGNING_KEY` so an active signed tenant link can be reconstructed safely across backend restarts; if omitted, the backend derives signing from the service-role key. Configure frontend `VITE_API_BASE_URL`, and set `PAYMENT_CALLBACK_URL`, `PUBLIC_APP_URL`, and exact `ALLOWED_ORIGINS` for the deployment. For Flutterwave, register `https://YOUR_API_DOMAIN/api/payments/flutterwave/webhook` in the Flutterwave dashboard and set its Secret Hash to the same value as `FLW_WEBHOOK_SECRET`. For Paystack, register `https://YOUR_API_DOMAIN/api/payments/paystack/webhook`. In production, use live gateway credentials and set `SCREENING_PRICES_CONFIRMED=true` only after package prices have been approved.
 
-Optional landlord report-ready emails use Resend. Configure `RESEND_API_KEY` and `SCREENING_NOTIFICATION_FROM_EMAIL` on the backend, and verify the sender domain in Resend. The email contains only a sign-in link to the landlord dashboard; screening details remain behind Supabase authentication. The dashboard also shows completed reports when the landlord returns.
+Report-ready and waitlist emails use a durable Supabase queue and Brevo Edge Functions. Apply the email-operations migration before deploying this backend; inline Resend delivery has been removed. See [EMAIL_OPERATIONS.md](../EMAIL_OPERATIONS.md) for sender configuration, SMTP authentication emails, scheduler setup, admin bootstrap, and rollout. Backend admin endpoints verify Supabase sessions and server-controlled memberships; public metadata cannot assign administrator access.
 
 Deployment variable names and a Render blueprint are in the repository-root `DEPLOYMENT.md` and `render.yaml`. The root `.env.local` is for Vite; backend secrets belong in `backend/.env` locally or the backend service's secret environment settings in Render.
 

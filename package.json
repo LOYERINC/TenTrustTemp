@@ -9,7 +9,10 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:email": "node --import tsx --test --test-concurrency=1 src/lib/supabaseConfig.test.ts src/lib/authLinks.test.ts src/lib/verifyAuthLink.test.ts api/waitlist.test.ts supabase/functions/_shared/email.test.ts",
+    "test:email:db": "node --liftoff-only --no-wasm-tier-up --test --test-concurrency=1 scripts/test-email-db.mjs",
+    "test:verification:db": "node --liftoff-only --no-wasm-tier-up --test --test-concurrency=1 scripts/test-verification-db.mjs"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
@@ -31,6 +34,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
     "@types/express": "^4.17.25",
     "@types/node": "^22.14.0",

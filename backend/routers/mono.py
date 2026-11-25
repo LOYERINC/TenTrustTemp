@@ -25,14 +25,9 @@ router = APIRouter(prefix="/api/mono", tags=["Mono Identity & Credit Integration
 )
 async def get_credit_history(payload: MonoCreditHistoryRequest, authorization: Optional[str] = Header(default=None)):
     await authenticated_user_id(authorization)
-    if not settings.MONO_CREDIT_CHECKS_ENABLED:
-        raise HTTPException(status_code=503, detail="Mono credit-history lookup is not enabled for this environment.")
-    result = await mono_service.lookup_credit_history(
-        bvn=payload.bvn,
-        provider=payload.provider or "all",
-        reason=payload.reason
-    )
-    return result
+    # This adapter remains disabled even if a stale deployment flag is true.
+    from verification.providers import DisabledCreditProvider
+    return await DisabledCreditProvider().check()
 
 
 @router.post(

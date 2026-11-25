@@ -2,8 +2,9 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from routers import health, mono, prembly, screenings
+from routers import admin, health, interswitch, mono, prembly, screenings
 from services.screening_store import close_http_clients, initialize_http_clients
+from verification.api import router as verification_router, VerificationBodyLimit
 
 # Configure Logging
 logging.basicConfig(
@@ -35,6 +36,11 @@ app.include_router(health.router)
 app.include_router(mono.router)
 app.include_router(prembly.router)
 app.include_router(screenings.router)
+app.include_router(interswitch.router)
+app.include_router(interswitch.staff_router)
+app.include_router(admin.router)
+app.include_router(verification_router)
+app.add_middleware(VerificationBodyLimit)
 
 
 @app.on_event("startup")

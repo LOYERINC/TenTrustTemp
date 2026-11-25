@@ -1,3 +1,5 @@
+import { normalizeSupabasePublicKey } from '../src/lib/supabaseConfig';
+
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const validRoles = new Set(["tenant", "landlord", "agent", "other", "not-specified"]);
 
@@ -28,7 +30,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const anonKey = normalizeSupabasePublicKey(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY);
   if (!supabaseUrl || !anonKey) {
     return res.status(503).json({ error: "Waitlist storage is not configured." });
   }
